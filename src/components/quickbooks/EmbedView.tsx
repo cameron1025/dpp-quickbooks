@@ -51,7 +51,7 @@ export default function EmbedView({ merchantId }: EmbedViewProps) {
       if (statusRes.ok) {
         const data = await statusRes.json();
         setConnection({
-          connected: data.qb_connected || false,
+          connected: data.connected || data.qb_connected || false,
           company_name: data.company_name,
           last_sync: data.last_sync_at,
         });
