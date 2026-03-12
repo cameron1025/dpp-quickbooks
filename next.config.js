@@ -23,7 +23,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://*.intuit.com https://*.supabase.co wss://*.supabase.co",
+              "connect-src 'self' https://*.intuit.com https://*.supabase.co wss://*.supabase.co https://demo.perspectiveproductions.net",
               "frame-src 'self' https://appcenter.intuit.com",
               "frame-ancestors 'self' https://payments.deluxe.com https://*.deluxe.com https://demo.perspectiveproductions.net",
               "base-uri 'self'",
