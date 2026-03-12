@@ -55,7 +55,8 @@ export function middleware(request: NextRequest) {
     !pathname.startsWith("/api/auth/disconnect-webhook") &&
     !pathname.startsWith("/api/health")
   ) {
-    const merchantId = request.cookies.get("dpp_merchant_id")?.value;
+    const merchantId = request.cookies.get("dpp_merchant_id")?.value
+      || request.headers.get("x-merchant-id");
     if (!merchantId) {
       return NextResponse.json(
         {
@@ -65,6 +66,13 @@ export function middleware(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Pass merchant ID to the route handler via header
+    const response = NextResponse.next();
+    if (merchantId) {
+      response.headers.set("x-merchant-id", merchantId);
+    }
+    return response;
   }
 
   return NextResponse.next();
