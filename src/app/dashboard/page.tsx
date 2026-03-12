@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ConnectionStatus } from "@/components/quickbooks";
+import { DashboardPoller } from "@/components/quickbooks/DashboardPoller";
 
 interface SyncLogEntry {
   id: string;
@@ -40,6 +41,9 @@ function DashboardContent() {
     transactions: [],
   });
   const [notification, setNotification] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+  const [isPolling, setIsPolling] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     const connected = searchParams.get("connected");
@@ -64,7 +68,8 @@ function DashboardContent() {
     }
   }, [searchParams]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (manual?: boolean) => {
+    if (manual) setIsRefreshing(true);
     try {
       const [statusRes, txnRes] = await Promise.all([fetch("/api/merchant/status"), fetch("/api/merchant/transactions")]);
       if (statusRes.ok) {
@@ -75,10 +80,18 @@ function DashboardContent() {
         const txnData = await txnRes.json();
         setMerchant(function(prev) { return Object.assign({}, prev, { transactions: txnData.transactions || [], stats: Object.assign({}, prev.stats, txnData.stats) }); });
       }
-    } catch (_e) { /* silent */ }
+        setLastUpdated(new Date());
+    if (manual) setIsRefreshing(false);
+    } catch (_e) { if (manual) setIsRefreshing(false); }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (!isPolling) return;
+    const interval = setInterval(() => { fetchData(); }, 30000);
+    return () => clearInterval(interval);
+  }, [isPolling, fetchData]);
 
   const handleDisconnect = async () => {
     const res = await fetch("/api/quickbooks/disconnect", { method: "POST" });
@@ -121,6 +134,13 @@ function DashboardContent() {
       )
     ),
     React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" },
+      React.createElement(DashboardPoller, {
+        isPolling: isPolling,
+        isLoading: isRefreshing,
+        lastUpdated: lastUpdated,
+        onRefresh: function() { fetchData(true); },
+        onTogglePolling: function() { setIsPolling(function(p) { return !p; }); },
+      }),
       React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-6" },
         React.createElement("div", { className: "lg:col-span-2 space-y-6" },
           React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-4" },
@@ -197,3 +217,5 @@ export default function DashboardPage() {
     )
   }, React.createElement(DashboardContent, null));
 }
+
+
