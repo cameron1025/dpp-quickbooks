@@ -3,7 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
-  const merchantId = request.cookies.get("dpp_merchant_id")?.value;
+  const merchantId = request.cookies.get("dpp_merchant_id")?.value
+    || request.headers.get("x-merchant-id");
 
   if (!merchantId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
