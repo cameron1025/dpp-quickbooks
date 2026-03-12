@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateWebhookSignature } from "@/lib/quickbooks";
 import { webhookPayloadSchema } from "@/lib/sanitize";
 import { logger } from "@/lib/logger";
+import { handleInvoiceEvent } from "@/lib/quickbooks/invoice-webhook";
 
 export async function POST(request: NextRequest) {
   // ── Read the raw body ─────────────────────────────────────
@@ -141,7 +142,26 @@ async function handleInvoiceChange(
     invoiceId: entity.id,
     operation: entity.operation,
   });
-  // TODO: Handle invoice updates
+
+  await handleInvoiceEvent(
+    {
+      realmId,
+      dataChangeEvent: {
+        entities: [{
+          name: 'Invoice' as const,
+          id: entity.id,
+          operation: entity.operation as 'Create' | 'Update' | 'Delete' | 'Void',
+          lastUpdated: new Date().toISOString(),
+        }],
+      },
+    },
+    {
+      name: 'Invoice' as const,
+      id: entity.id,
+      operation: entity.operation as 'Create' | 'Update' | 'Delete' | 'Void',
+      lastUpdated: new Date().toISOString(),
+    }
+  );
 }
 
 async function handleCustomerChange(

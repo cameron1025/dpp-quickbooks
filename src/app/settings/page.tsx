@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import ReminderSettings from "@/components/quickbooks/ReminderSettings";
 
 interface Settings {
   auto_sync_payments: boolean;
@@ -252,6 +253,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Invoice Reminders */}
+        <ReminderSettings />
 
         {/* Save Button */}
         <div className="flex justify-end">

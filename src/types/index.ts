@@ -113,6 +113,16 @@ export interface QBInvoice {
   CustomerRef: { value: string; name?: string };
   Line: QBInvoiceLine[];
   EmailStatus?: "NotSet" | "NeedToSend" | "EmailSent";
+  BillEmail?: { Address: string };
+  BillAddr?: {
+    Line1?: string;
+    City?: string;
+    CountrySubDivisionCode?: string;
+    PostalCode?: string;
+    Country?: string;
+  };
+  PrimaryPhone?: { FreeFormNumber?: string };
+  Status?: string;
 }
 
 export interface QBInvoiceLine {
