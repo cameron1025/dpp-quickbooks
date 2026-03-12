@@ -193,6 +193,29 @@ export async function POST(request: NextRequest) {
     request.headers.get("dpp-webhook-signature") || "";
 
   // â”€â”€ Validate signature â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // DEBUG: Try different signing methods to figure out DPP's format
+  const secret = process.env.DPP_GATEWAY_WEBHOOK_SECRET || "";
+  const sigParts = signatureHeader.split(",");
+  const timestamp = (sigParts.find((p: string) => p.startsWith("t=")) || "").replace("t=", "");
+  const receivedHash = (sigParts.find((p: string) => p.startsWith("sha256=")) || "").replace("sha256=", "");
+
+  const tryMethods = [
+    { name: "body_only", data: body },
+    { name: "timestamp.body", data: `${timestamp}.${body}` },
+    { name: "timestamp+body", data: `${timestamp}${body}` },
+    { name: "body.timestamp", data: `${body}.${timestamp}` },
+  ];
+
+  for (const method of tryMethods) {
+    const hash = crypto.createHmac("sha256", secret).update(method.data).digest("base64");
+    logger.info("DPP signature test", {
+      method: method.name,
+      computed: hash,
+      received: receivedHash,
+      match: hash === receivedHash,
+    });
+  }
+
   if (false && !validateDPPSignature(body, signatureHeader)) {
     logger.warn("DPP webhook: invalid signature");
     return NextResponse.json(
@@ -386,4 +409,5 @@ async function markEvent(
     })
     .eq("event_id", eventId);
 }
+
 
