@@ -207,12 +207,16 @@ export async function POST(request: NextRequest) {
   ];
 
   for (const method of tryMethods) {
-    const hash = crypto.createHmac("sha256", secret).update(method.data).digest("base64");
-    logger.info("DPP signature test", {
-      method: method.name,
-      computed: hash,
+    const hmacBase64 = crypto.createHmac("sha256", secret).update(method.data).digest("base64");
+    const hmacHex = crypto.createHmac("sha256", secret).update(method.data).digest("hex");
+    const hashBase64 = crypto.createHash("sha256").update(method.data).digest("base64");
+    const hashHex = crypto.createHash("sha256").update(method.data).digest("hex");
+    logger.info("DPP sig " + method.name, {
+      hmacB64: hmacBase64 === receivedHash,
+      hmacHex: hmacHex === receivedHash,
+      hashB64: hashBase64 === receivedHash,
+      hashHex: hashHex === receivedHash,
       received: receivedHash,
-      match: hash === receivedHash,
     });
   }
 
@@ -409,5 +413,6 @@ async function markEvent(
     })
     .eq("event_id", eventId);
 }
+
 
 
