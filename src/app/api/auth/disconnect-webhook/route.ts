@@ -51,10 +51,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const realmId = request.nextUrl.searchParams.get("realmId");
+  const merchantId = request.cookies.get("dpp_merchant_id")?.value;
   
   if (realmId) {
     await deleteTokensForRealm(realmId);
-    logger.info("App Store disconnect via GET", { realmId });
+    logger.info("App Store disconnect via GET with realmId", { realmId });
+  } else if (merchantId) {
+    // No realmId in URL — use the merchant cookie to clean up
+    const { revokeAndDeleteTokens } = await import("@/lib/quickbooks");
+    await revokeAndDeleteTokens(merchantId);
+    logger.info("App Store disconnect via GET with merchant cookie", { merchantId });
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
