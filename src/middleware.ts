@@ -18,6 +18,8 @@ const PUBLIC_ROUTES = [
   "/api/health",
   "/api/test",
   "/api/invoices/reminders",
+  "/embed",
+  "/api/embed",
 ];
 
 export function middleware(request: NextRequest) {
