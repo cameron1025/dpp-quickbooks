@@ -1,8 +1,8 @@
-// ============================================================
+﻿// ============================================================
 // Payment Sync Service
 // ============================================================
-// Bridges DPP gateway transactions → QuickBooks Online payments.
-// DPP gateway integration is a placeholder — you wire that up.
+// Bridges DPP gateway transactions â†’ QuickBooks Online payments.
+// DPP gateway integration is a placeholder â€” you wire that up.
 
 import { QuickBooksClient } from "./client";
 import { getValidTokens, storeTokens } from "./token-manager";
@@ -48,9 +48,9 @@ export class PaymentSyncService {
         value: customer.Id!,
         name: customer.DisplayName,
       },
-      PaymentRefNum: transaction.id,
+      PaymentRefNum: transaction.id.substring(0, 21),
       TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
-      PrivateNote: `DPP Gateway payment — ${transaction.payment_method} — ID: ${transaction.id}`,
+      PrivateNote: `DPP Gateway payment â€” ${transaction.payment_method} â€” ID: ${transaction.id}`,
       Line: [],
       // CurrencyRef will use the company default if not specified
     };
@@ -132,3 +132,4 @@ export class PaymentSyncService {
     return result.QueryResponse.Account || [];
   }
 }
+
