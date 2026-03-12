@@ -96,14 +96,13 @@ export default function EmbedView({ merchantId }: EmbedViewProps) {
       'width=600,height=700'
     );
 
-    // Listen for connection complete message
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'dpp-qb-connected') {
-        window.removeEventListener('message', handler);
+    // Poll for popup close, then refresh data
+    const checkClosed = setInterval(() => {
+      if (!popup || popup.closed) {
+        clearInterval(checkClosed);
         fetchData();
       }
-    };
-    window.addEventListener('message', handler);
+    }, 500);
   };
 
   const handleDisconnect = async () => {
