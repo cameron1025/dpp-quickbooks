@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { resolveMerchantId } from "@/lib/resolve-merchant";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
-  const merchantId = request.cookies.get("dpp_merchant_id")?.value
+  const rawId = request.cookies.get("dpp_merchant_id")?.value
     || request.headers.get("x-merchant-id");
 
-  if (!merchantId) {
+  if (!rawId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const merchantId = await resolveMerchantId(rawId);
+  if (!merchantId) {
+    return NextResponse.json({ error: "Merchant not found" }, { status: 404 });
   }
 
   try {
@@ -30,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       paymentsToday: todayLogs.length,
-      revenueToday: 0, // Would need amount stored in metadata
+      revenueToday: 0,
       syncedInvoices: (logs || []).filter((l) => l.entity_type === "Invoice" && l.status === "success").length,
       pendingSync: (logs || []).filter((l) => l.status === "pending").length,
     };

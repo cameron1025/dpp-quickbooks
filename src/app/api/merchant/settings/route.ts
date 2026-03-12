@@ -2,15 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { PaymentSyncService } from "@/lib/quickbooks";
 import { merchantSettingsSchema } from "@/lib/sanitize";
+import { resolveMerchantId } from "@/lib/resolve-merchant";
 import { logger } from "@/lib/logger";
 
 // GET — fetch current settings + QB accounts
 export async function GET(request: NextRequest) {
-  const merchantId = request.cookies.get("dpp_merchant_id")?.value
+  const rawId = request.cookies.get("dpp_merchant_id")?.value
     || request.headers.get("x-merchant-id");
 
-  if (!merchantId) {
+  if (!rawId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const merchantId = await resolveMerchantId(rawId);
+  if (!merchantId) {
+    return NextResponse.json({ error: "Merchant not found" }, { status: 404 });
   }
 
   try {
@@ -55,10 +61,16 @@ export async function GET(request: NextRequest) {
 
 // POST — save settings
 export async function POST(request: NextRequest) {
-  const merchantId = request.cookies.get("dpp_merchant_id")?.value;
+  const rawId = request.cookies.get("dpp_merchant_id")?.value
+    || request.headers.get("x-merchant-id");
 
-  if (!merchantId) {
+  if (!rawId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const merchantId = await resolveMerchantId(rawId);
+  if (!merchantId) {
+    return NextResponse.json({ error: "Merchant not found" }, { status: 404 });
   }
 
   try {

@@ -6,11 +6,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getValidTokens, PaymentSyncService } from "@/lib/quickbooks";
+import { resolveMerchantId } from "@/lib/resolve-merchant";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
-  const merchantId = request.cookies.get("dpp_merchant_id")?.value;
+  const rawId = request.cookies.get("dpp_merchant_id")?.value
+    || request.headers.get("x-merchant-id");
 
+  if (!rawId) {
+    return NextResponse.json({
+      connected: false,
+      connectionHealth: "disconnected",
+      stats: {
+        paymentsToday: 0,
+        revenueToday: 0,
+        syncedInvoices: 0,
+        pendingSync: 0,
+      },
+    });
+  }
+
+  const merchantId = await resolveMerchantId(rawId);
   if (!merchantId) {
     return NextResponse.json({
       connected: false,
@@ -79,7 +95,7 @@ export async function GET(request: NextRequest) {
       companyName,
       connectedAt: merchant.qb_connected_at,
       connectionHealth,
-      lastSyncAt: null, // TODO: track last sync timestamp
+      lastSyncAt: null,
       stats,
     });
   } catch (error) {
