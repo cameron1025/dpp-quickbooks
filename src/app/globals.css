@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* QuickBooks brand font — Avenir Next */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --qb-green: #2CA01C;
+  --qb-green-dark: #108000;
+  --qb-green-light: #E6F5E4;
+  --qb-charcoal: #393A3D;
+  --qb-slate: #6B6C72;
+  --qb-mist: #BABEC5;
+  --qb-cloud: #F4F5F8;
+  --dpp-primary: #1A1A2E;
+  --dpp-accent: #4361EE;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Smooth focus transitions */
+*:focus-visible {
+  outline: 2px solid var(--qb-green);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--qb-cloud);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--qb-mist);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--qb-slate);
+}
