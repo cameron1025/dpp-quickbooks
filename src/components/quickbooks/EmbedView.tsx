@@ -90,11 +90,23 @@ export default function EmbedView({ merchantId }: EmbedViewProps) {
   }, [connection.connected, merchantId]);
 
   const handleConnect = () => {
-    window.open(
+    // Set cookie so callback knows to close popup
+    document.cookie = 'qb_oauth_popup=true;path=/;max-age=600';
+
+    const popup = window.open(
       `/api/quickbooks/connect?merchant_id=${merchantId}`,
       'qb-connect',
       'width=600,height=700'
     );
+
+    // Listen for connection complete message
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'dpp-qb-connected') {
+        window.removeEventListener('message', handler);
+        fetchData(); // Refresh the embed view
+      }
+    };
+    window.addEventListener('message', handler);
   };
 
   const handleDisconnect = async () => {

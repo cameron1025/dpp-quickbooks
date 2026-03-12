@@ -124,6 +124,39 @@ export async function GET(request: NextRequest) {
     await storeTokens(merchant.id, tokens);
 
     // ── Set session cookie ──────────────────────────────────
+    // Check if this was opened as a popup (from embed view)
+    const isPopup = searchParams.get("popup") === "true" || request.cookies.get("qb_oauth_popup")?.value === "true";
+
+    if (isPopup) {
+      // Close popup and notify parent
+      const html = `
+        <!DOCTYPE html>
+        <html><body>
+          <p>Connected! This window will close...</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'dpp-qb-connected', merchantId: '${merchant.id}' }, '*');
+            }
+            window.close();
+          </script>
+        </body></html>
+      `;
+      const popupResponse = new NextResponse(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      });
+      popupResponse.cookies.set("dpp_merchant_id", merchant.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      });
+      popupResponse.cookies.delete("qb_oauth_state");
+      popupResponse.cookies.delete("qb_oauth_popup");
+      return popupResponse;
+    }
+
     const response = NextResponse.redirect(
       `${appUrl}/dashboard?connected=true`
     );
