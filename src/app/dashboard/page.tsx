@@ -115,9 +115,7 @@ function DashboardContent() {
       React.createElement("div", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" },
         React.createElement("div", { className: "flex items-center justify-between h-16" },
           React.createElement("div", { className: "flex items-center gap-3" },
-            React.createElement("div", { className: "w-8 h-8 bg-dpp-primary rounded-lg flex items-center justify-center" },
-              React.createElement("span", { className: "text-white font-bold text-sm" }, "D")
-            ),
+            React.createElement("img", { src: "/logo.png", alt: "DPP Payments", className: "w-8 h-8 rounded-lg" }),
             React.createElement("span", { className: "font-semibold text-lg text-gray-900" }, "DPP Payments")
           ),
           React.createElement("nav", { className: "flex items-center gap-4" },
@@ -217,5 +215,6 @@ export default function DashboardPage() {
     )
   }, React.createElement(DashboardContent, null));
 }
+
 
 
