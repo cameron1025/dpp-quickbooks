@@ -1,12 +1,20 @@
-// ============================================================
-// Dashboard Page — Main merchant interface
-// ============================================================
-
 "use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ConnectionStatus } from "@/components/quickbooks";
+
+interface SyncLogEntry {
+  id: string;
+  created_at: string;
+  direction: string;
+  entity_type: string;
+  entity_id: string;
+  qb_entity_id: string | null;
+  status: "pending" | "success" | "failed" | "skipped";
+  error_message: string | null;
+  metadata: Record<string, unknown> | null;
+}
 
 interface MerchantData {
   connected: boolean;
@@ -20,6 +28,7 @@ interface MerchantData {
     syncedInvoices: number;
     pendingSync: number;
   };
+  transactions: SyncLogEntry[];
 }
 
 function DashboardContent() {
@@ -33,13 +42,13 @@ function DashboardContent() {
       syncedInvoices: 0,
       pendingSync: 0,
     },
+    transactions: [],
   });
   const [notification, setNotification] = useState<{
     type: "success" | "error" | "info";
     message: string;
   } | null>(null);
 
-  // Handle URL params from OAuth callback
   useEffect(() => {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
@@ -71,33 +80,42 @@ function DashboardContent() {
       });
     }
 
-    // Clean URL params
     if (connected || error || disconnected) {
       window.history.replaceState({}, "", "/dashboard");
     }
   }, [searchParams]);
 
-  // Fetch merchant data
-  const fetchMerchantData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/merchant/status");
-      if (res.ok) {
-        const data = await res.json();
-        setMerchant(data);
+      const [statusRes, txnRes] = await Promise.all([
+        fetch("/api/merchant/status"),
+        fetch("/api/merchant/transactions"),
+      ]);
+
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setMerchant((prev) => ({ ...prev, ...statusData }));
+      }
+
+      if (txnRes.ok) {
+        const txnData = await txnRes.json();
+        setMerchant((prev) => ({
+          ...prev,
+          transactions: txnData.transactions || [],
+          stats: { ...prev.stats, ...txnData.stats },
+        }));
       }
     } catch {
-      // Silent fail on initial load
+      // Silent fail on load
     }
   }, []);
 
   useEffect(() => {
-    fetchMerchantData();
-  }, [fetchMerchantData]);
+    fetchData();
+  }, [fetchData]);
 
   const handleDisconnect = async () => {
-    const res = await fetch("/api/quickbooks/disconnect", {
-      method: "POST",
-    });
+    const res = await fetch("/api/quickbooks/disconnect", { method: "POST" });
 
     if (res.ok) {
       setMerchant((prev) => ({
@@ -117,9 +135,15 @@ function DashboardContent() {
     }
   };
 
+  const statusColor = {
+    pending: "bg-yellow-100 text-yellow-800",
+    success: "bg-green-100 text-green-800",
+    failed: "bg-red-100 text-red-800",
+    skipped: "bg-gray-100 text-gray-600",
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Bar */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -132,13 +156,13 @@ function DashboardContent() {
               </span>
             </div>
             <nav className="flex items-center gap-4">
-              <a
+              
                 href="/learn-more"
                 className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Learn more
               </a>
-              <a
+              
                 href="/settings"
                 className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
@@ -149,7 +173,6 @@ function DashboardContent() {
         </div>
       </header>
 
-      {/* Notification Banner */}
       {notification && (
         <div
           className={`
@@ -175,34 +198,16 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column — Connection + Stats */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Stats Grid */}
+            {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                {
-                  label: "Payments Today",
-                  value: merchant.stats.paymentsToday,
-                  format: "number",
-                },
-                {
-                  label: "Revenue Today",
-                  value: merchant.stats.revenueToday,
-                  format: "currency",
-                },
-                {
-                  label: "Synced Invoices",
-                  value: merchant.stats.syncedInvoices,
-                  format: "number",
-                },
-                {
-                  label: "Pending Sync",
-                  value: merchant.stats.pendingSync,
-                  format: "number",
-                },
+                { label: "Payments Today", value: merchant.stats.paymentsToday, format: "number" },
+                { label: "Revenue Today", value: merchant.stats.revenueToday, format: "currency" },
+                { label: "Synced Invoices", value: merchant.stats.syncedInvoices, format: "number" },
+                { label: "Pending Sync", value: merchant.stats.pendingSync, format: "number" },
               ].map((stat) => (
                 <div
                   key={stat.label}
@@ -213,34 +218,82 @@ function DashboardContent() {
                   </p>
                   <p className="mt-1 text-2xl font-semibold text-gray-900">
                     {stat.format === "currency"
-                      ? `$${stat.value.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}`
+                      ? `$${stat.value.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
                       : stat.value.toLocaleString()}
                   </p>
                 </div>
               ))}
             </div>
 
-            {/* Recent Activity (placeholder) */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="font-semibold text-gray-900 mb-4">
-                Recent Transactions
-              </h2>
-              {merchant.connected ? (
-                <div className="text-sm text-gray-500 text-center py-8">
-                  Transactions will appear here once payments are
-                  processed through the DPP gateway.
+            {/* Transaction History */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="font-semibold text-gray-900">Sync History</h2>
+              </div>
+
+              {merchant.transactions.length > 0 ? (
+                <div className="divide-y divide-gray-100">
+                  {merchant.transactions.map((txn) => (
+                    <div
+                      key={txn.id}
+                      className="px-6 py-4 flex items-center justify-between"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {txn.entity_type}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {txn.direction === "dpp_to_qb" ? "→ QuickBooks" : "← QuickBooks"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-gray-500 font-mono">
+                            {txn.entity_id.length > 20
+                              ? txn.entity_id.substring(0, 20) + "…"
+                              : txn.entity_id}
+                          </span>
+                          {txn.qb_entity_id && (
+                            <span className="text-xs text-gray-400">
+                              QB #{txn.qb_entity_id}
+                            </span>
+                          )}
+                        </div>
+                        {txn.error_message && (
+                          <p className="text-xs text-red-600 mt-1">
+                            {txn.error_message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 ml-4">
+                        <span
+                          className={`
+                            text-xs font-medium px-2 py-1 rounded-full
+                            ${statusColor[txn.status]}
+                          `}
+                        >
+                          {txn.status}
+                        </span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          {new Date(txn.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500 text-center py-8">
-                  Connect to QuickBooks to start syncing transactions.
+                <div className="px-6 py-12 text-center">
+                  <p className="text-sm text-gray-500">
+                    {merchant.connected
+                      ? "No transactions synced yet. Payments will appear here once processed through DPP."
+                      : "Connect to QuickBooks to start syncing transactions."}
+                  </p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Right Column — Connection Card */}
+          {/* Right Column */}
           <div className="space-y-6">
             <ConnectionStatus
               connected={merchant.connected}
@@ -251,22 +304,16 @@ function DashboardContent() {
               onDisconnect={handleDisconnect}
             />
 
-            {/* Quick Links */}
             <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-              <h3 className="font-semibold text-gray-900 mb-3">
-                Resources
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Resources</h3>
               <ul className="space-y-2">
                 <li>
-                  <a
-                    href="/learn-more"
-                    className="text-sm text-dpp-accent hover:underline"
-                  >
+                  <a href="/learn-more" className="text-sm text-dpp-accent hover:underline">
                     How this integration works
                   </a>
                 </li>
                 <li>
-                  <a
+                  
                     href="https://quickbooks.intuit.com/app/apps/home"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -276,7 +323,7 @@ function DashboardContent() {
                   </a>
                 </li>
                 <li>
-                  <a
+                  
                     href="mailto:support@dpp-payments.example.com"
                     className="text-sm text-dpp-accent hover:underline"
                   >
