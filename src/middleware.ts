@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
   "/api/quickbooks/callback",
   "/api/health",
   "/api/test",
+  "/api/invoices/reminders",
 ];
 
 export function middleware(request: NextRequest) {
