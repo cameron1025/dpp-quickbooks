@@ -192,7 +192,7 @@ function DashboardContent() {
               onClick={() => setNotification(null)}
               className="ml-4 text-current opacity-60 hover:opacity-100"
             >
-              ✕
+              âœ•
             </button>
           </div>
         </div>
@@ -244,13 +244,13 @@ function DashboardContent() {
                             {txn.entity_type}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {txn.direction === "dpp_to_qb" ? "→ QuickBooks" : "← QuickBooks"}
+                            {txn.direction === "dpp_to_qb" ? "â†’ QuickBooks" : "â† QuickBooks"}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-gray-500 font-mono">
                             {txn.entity_id.length > 20
-                              ? txn.entity_id.substring(0, 20) + "…"
+                              ? txn.entity_id.substring(0, 20) + "â€¦"
                               : txn.entity_id}
                           </span>
                           {txn.qb_entity_id && (
@@ -344,7 +344,7 @@ export default function DashboardPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="animate-pulse text-gray-400">Loading…</div>
+          <div className="animate-pulse text-gray-400">Loadingâ€¦</div>
         </div>
       }
     >
