@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // QuickBooks OAuth 2.0 + OpenID Connect Client
 // ============================================================
 // Handles: authorization URL, token exchange, refresh, revoke,
@@ -7,7 +7,7 @@
 import OAuthClient from "intuit-oauth";
 import { QBTokens, QBUserProfile } from "@/types";
 
-// ── Singleton OAuth Client ──────────────────────────────────
+// â”€â”€ Singleton OAuth Client â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let oauthClient: OAuthClient | null = null;
 
@@ -28,7 +28,7 @@ export function getOAuthClient(): OAuthClient {
   return oauthClient;
 }
 
-// ── Authorization URL ───────────────────────────────────────
+// â”€â”€ Authorization URL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function getAuthorizationUrl(state: string): string {
   const client = getOAuthClient();
@@ -36,7 +36,6 @@ export function getAuthorizationUrl(state: string): string {
   return client.authorizeUri({
     scope: [
       OAuthClient.scopes.Accounting,
-      OAuthClient.scopes.Payment,
       OAuthClient.scopes.OpenId,
       OAuthClient.scopes.Email,
       OAuthClient.scopes.Profile,
@@ -45,7 +44,7 @@ export function getAuthorizationUrl(state: string): string {
   });
 }
 
-// ── Token Exchange ──────────────────────────────────────────
+// â”€â”€ Token Exchange â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function exchangeCodeForTokens(
   url: string
@@ -66,7 +65,7 @@ export async function exchangeCodeForTokens(
   };
 }
 
-// ── Token Refresh ───────────────────────────────────────────
+// â”€â”€ Token Refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function refreshAccessToken(
   refreshToken: string
@@ -97,7 +96,7 @@ export async function refreshAccessToken(
   };
 }
 
-// ── Token Revocation (disconnect) ───────────────────────────
+// â”€â”€ Token Revocation (disconnect) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function revokeToken(accessToken: string): Promise<void> {
   const client = getOAuthClient();
@@ -114,7 +113,7 @@ export async function revokeToken(accessToken: string): Promise<void> {
   await client.revoke({ access_token: accessToken });
 }
 
-// ── OpenID Connect: Get User Profile ────────────────────────
+// â”€â”€ OpenID Connect: Get User Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getUserProfile(
   accessToken: string
@@ -143,7 +142,7 @@ export async function getUserProfile(
   };
 }
 
-// ── Check if token is expired ───────────────────────────────
+// â”€â”€ Check if token is expired â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function isTokenExpired(tokens: QBTokens): boolean {
   const expiresAt = tokens.created_at + tokens.expires_in * 1000;
@@ -151,7 +150,7 @@ export function isTokenExpired(tokens: QBTokens): boolean {
   return Date.now() > expiresAt - 5 * 60 * 1000;
 }
 
-// ── Check if refresh token is expired ───────────────────────
+// â”€â”€ Check if refresh token is expired â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function isRefreshTokenExpired(tokens: QBTokens): boolean {
   const expiresAt =
@@ -159,3 +158,4 @@ export function isRefreshTokenExpired(tokens: QBTokens): boolean {
   // Consider expired 1 day early for safety
   return Date.now() > expiresAt - 24 * 60 * 60 * 1000;
 }
+
