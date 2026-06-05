@@ -4,7 +4,14 @@
 // Wraps QB API calls with automatic token refresh, error
 // handling, and retry logic.
 
-import { QBCustomer, QBInvoice, QBPayment, QBTokens } from "@/types";
+import {
+  QBCustomer,
+  QBInvoice,
+  QBItem,
+  QBPayment,
+  QBRefundReceipt,
+  QBTokens,
+} from "@/types";
 import { refreshAccessToken, isTokenExpired } from "./oauth";
 import { logger } from "@/lib/logger";
 
@@ -110,6 +117,44 @@ export class QuickBooksClient {
   async queryPayments(
     query: string
   ): Promise<{ QueryResponse: { Payment?: QBPayment[] } }> {
+    const encoded = encodeURIComponent(query);
+    return this.request("GET", `query?query=${encoded}`);
+  }
+
+  /**
+   * Delete a payment (QB sparse delete). Used to reverse a synced payment
+   * when an ACH transaction is later rejected by the gateway. Deleting the
+   * payment automatically restores any linked invoice balances. Requires the
+   * current SyncToken — fetch it via getPayment first.
+   */
+  async deletePayment(
+    paymentId: string,
+    syncToken: string
+  ): Promise<{ Payment: QBPayment }> {
+    return this.request<{ Payment: QBPayment }>(
+      "POST",
+      "payment?operation=delete",
+      { Id: paymentId, SyncToken: syncToken }
+    );
+  }
+
+  // ── Refund Receipts ───────────────────────────────────────
+
+  async createRefundReceipt(
+    refund: QBRefundReceipt
+  ): Promise<{ RefundReceipt: QBRefundReceipt }> {
+    return this.request<{ RefundReceipt: QBRefundReceipt }>(
+      "POST",
+      "refundreceipt",
+      refund
+    );
+  }
+
+  // ── Items (for refund line items) ─────────────────────────
+
+  async queryItems(
+    query: string
+  ): Promise<{ QueryResponse: { Item?: QBItem[] } }> {
     const encoded = encodeURIComponent(query);
     return this.request("GET", `query?query=${encoded}`);
   }

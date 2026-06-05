@@ -110,8 +110,46 @@ export const merchantSettingsSchema = z.object({
   sync_frequency: z.enum(["realtime", "hourly", "daily"]),
   default_deposit_account: z.string().optional(),
   default_income_account: z.string().optional(),
+  default_refund_item: z.string().optional(),
   webhook_url: z.string().url().optional().or(z.literal("")),
 });
+
+// Reminder settings — top-level merchant columns, edited via
+// /api/merchant/reminder-settings. Shape matches ReminderConfig in
+// components/quickbooks/ReminderSettings.tsx.
+export const reminderSettingsSchema = z.object({
+  reminders_enabled: z.boolean(),
+  reminder_send_initial: z.boolean(),
+  reminder_before_due_days: z.number().int().min(0).max(30),
+  reminder_on_due_date: z.boolean(),
+  reminder_overdue_3: z.boolean(),
+  reminder_overdue_7: z.boolean(),
+  reminder_overdue_14: z.boolean(),
+  reminder_from_name: z.string().max(100),
+  reminder_reply_to: z.string().email().max(254).or(z.literal("")),
+});
+
+// DPP/Deluxe gateway webhook payload. Deluxe does not sign webhooks, so
+// strict structural validation is part of our defense-in-depth (alongside
+// the URL secret + IP allowlist). passthrough() keeps the full payload so
+// transformToDPPTransaction can still read the long tail of gateway fields.
+export const dppWebhookPayloadSchema = z
+  .object({
+    EventType: z.string().max(50).optional().default(""),
+    TransactionType: z.string().max(50).optional().default(""),
+    PaymentType: z.string().max(50).optional().default(""),
+    MID: z.string().min(1).max(64),
+    TransactionId: z.string().min(1).max(100),
+    DateTime: z.string().max(64).optional().default(""),
+    TransactionAmount: z.string().max(32),
+    InvoiceNumber: z.string().max(64).optional().default(""),
+    Status: z.string().max(32).optional().default(""),
+    Currency: z.string().max(8).optional().default("USD"),
+    CardType: z.string().max(32).optional().default(""),
+    CardNumber: z.string().max(40).optional().default(""),
+    AuthCode: z.string().max(32).optional().default(""),
+  })
+  .passthrough();
 
 // ── CSRF Token ──────────────────────────────────────────────
 

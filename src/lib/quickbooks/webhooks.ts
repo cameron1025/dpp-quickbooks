@@ -67,32 +67,46 @@ export function validateWebhookSignature(
 }
 
 /**
- * Validate a DPP gateway webhook signature.
- * Placeholder — implement your own HMAC scheme.
+ * Verify the shared secret embedded in the DPP webhook URL.
+ *
+ * Deluxe/DPP does NOT sign its outbound webhooks (no HMAC, signature
+ * header, token, basic-auth, or mTLS). Since we register the webhook
+ * `eventUri` with Deluxe, we embed a high-entropy secret in that URL
+ * (e.g. `/api/webhooks/dpp?token=<secret>`) and verify it here in
+ * constant time. This is combined with the source-IP allowlist and
+ * strict payload validation for defense in depth.
+ *
+ * @param provided - The token from the request URL (`?token=` or path segment)
+ * @returns true if it matches DPP_WEBHOOK_URL_SECRET, false otherwise
  */
-export function validateDPPWebhookSignature(
-  payload: string,
-  signature: string
+export function verifyDPPUrlSecret(
+  provided: string | null | undefined
 ): boolean {
-  const secret = process.env.DPP_GATEWAY_WEBHOOK_SECRET;
+  const expected = process.env.DPP_WEBHOOK_URL_SECRET;
 
-  if (!secret) {
-    logger.error("DPP_GATEWAY_WEBHOOK_SECRET is not configured");
+  if (!expected) {
+    logger.error("DPP_WEBHOOK_URL_SECRET is not configured");
+    return false;
+  }
+
+  if (!provided) {
+    logger.warn("DPP webhook: missing URL secret token");
+    return false;
+  }
+
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(expected, "utf8");
+
+  // Length guard — timingSafeEqual throws on unequal lengths.
+  if (a.length !== b.length) {
+    logger.warn("DPP webhook: URL secret length mismatch");
     return false;
   }
 
   try {
-    const hash = crypto
-      .createHmac("sha256", secret)
-      .update(payload)
-      .digest("hex");
-
-    return crypto.timingSafeEqual(
-      Buffer.from(hash, "utf8"),
-      Buffer.from(signature, "utf8")
-    );
+    return crypto.timingSafeEqual(a, b);
   } catch (error) {
-    logger.error("Error validating DPP webhook signature", { error });
+    logger.error("Error verifying DPP URL secret", { error });
     return false;
   }
 }

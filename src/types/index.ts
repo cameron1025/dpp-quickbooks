@@ -24,6 +24,8 @@ export interface MerchantSettings {
   sync_frequency: "realtime" | "hourly" | "daily";
   default_deposit_account?: string;
   default_income_account?: string;
+  /** QB Item (Type=Service) used as the line item on refund receipts. Auto-picked if unset. */
+  default_refund_item?: string;
   webhook_url?: string;
 }
 
@@ -67,6 +69,7 @@ export interface QBUserProfile {
 
 export interface QBPayment {
   Id?: string;
+  SyncToken?: string;
   TotalAmt: number;
   CustomerRef: { value: string; name?: string };
   CurrencyRef?: { value: string };
@@ -76,6 +79,39 @@ export interface QBPayment {
   TxnDate?: string;
   PrivateNote?: string;
   PaymentRefNum?: string;
+}
+
+// ── QuickBooks RefundReceipt (for DPP refunds) ──────────────
+
+export interface QBRefundReceiptLine {
+  Amount: number;
+  DetailType: "SalesItemLineDetail";
+  SalesItemLineDetail: {
+    ItemRef: { value: string; name?: string };
+    Qty?: number;
+    UnitPrice?: number;
+  };
+  Description?: string;
+}
+
+export interface QBRefundReceipt {
+  Id?: string;
+  SyncToken?: string;
+  CustomerRef: { value: string; name?: string };
+  TotalAmt?: number;
+  TxnDate?: string;
+  PaymentMethodRef?: { value: string };
+  DepositToAccountRef?: { value: string };
+  PrivateNote?: string;
+  PaymentRefNum?: string;
+  Line: QBRefundReceiptLine[];
+}
+
+export interface QBItem {
+  Id?: string;
+  Name: string;
+  Type?: string;
+  IncomeAccountRef?: { value: string; name?: string };
 }
 
 export interface QBPaymentLine {
