@@ -20,9 +20,7 @@ export default function LearnMorePage() {
               href="/dashboard"
               className="flex items-center gap-3"
             >
-              <div className="w-8 h-8 bg-dpp-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">P</span>
-              </div>
+              <img src="/logo.png" alt="PaySync" className="w-8 h-8 rounded-lg" />
               <span className="font-semibold text-lg text-gray-900">
                 PaySync
               </span>
