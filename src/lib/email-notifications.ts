@@ -61,7 +61,7 @@ export async function sendSyncFailureEmail(
   details: SyncFailureDetails
 ): Promise<void> {
   const fromAddress =
-    process.env.ALERT_EMAIL_FROM || "DPP Sync <alerts@dpp.com>";
+    process.env.ALERT_EMAIL_FROM || "PaySync <alerts@perspectiveproductions.net>";
   const toAddress = process.env.ALERT_EMAIL_TO || "";
 
   if (!toAddress) {
@@ -118,13 +118,13 @@ export async function sendSyncFailureEmail(
         <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 12px 16px; margin-top: 16px;">
           <p style="margin: 0; color: #991B1B; font-size: 14px;">
             <strong>Action needed:</strong> Check the sync log in your
-            <a href="${appUrl}/dashboard" style="color: #DC2626;">DPP Dashboard</a>
+            <a href="${appUrl}/dashboard" style="color: #DC2626;">PaySync Dashboard</a>
             and manually resolve this transaction.
           </p>
         </div>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
         <p style="margin: 0; color: #9CA3AF; font-size: 12px;">
-          DPP x QuickBooks Integration - Automated Alert
+          PaySync — Automated Alert
         </p>
       </div>
     </div>
@@ -161,7 +161,7 @@ export async function sendDailyDigest(): Promise<void> {
   if (failed === 0) return;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dpp-quickbooks-production.up.railway.app";
-  const subject = `DPP Sync Digest: ${synced}/${total} succeeded, ${failed} failed`;
+  const subject = `PaySync Digest: ${synced}/${total} succeeded, ${failed} failed`;
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -189,14 +189,14 @@ export async function sendDailyDigest(): Promise<void> {
         </p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
         <p style="margin: 0; color: #9CA3AF; font-size: 12px;">
-          DPP x QuickBooks Integration - Daily Digest
+          PaySync — Daily Digest
         </p>
       </div>
     </div>
   `;
 
   await sendEmail({
-    from: process.env.ALERT_EMAIL_FROM || "DPP Sync <alerts@dpp.com>",
+    from: process.env.ALERT_EMAIL_FROM || "PaySync <alerts@perspectiveproductions.net>",
     to: toAddress,
     subject,
     html,

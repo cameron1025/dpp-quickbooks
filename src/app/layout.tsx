@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DPP Payments × QuickBooks",
+  title: "PaySync for QuickBooks",
   description:
-    "Seamlessly sync your DPP payment gateway transactions with QuickBooks Online. Automatic payment recording, invoice matching, and real-time reconciliation.",
+    "Seamlessly sync your Deluxe payment gateway transactions with QuickBooks Online. Automatic payment recording, invoice matching, and real-time reconciliation.",
   robots: "noindex, nofollow", // Private app — no indexing
 };
 

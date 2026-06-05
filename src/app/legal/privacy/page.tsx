@@ -8,8 +8,8 @@ export default function PrivacyPolicyPage() {
       React.createElement("div", { className: "max-w-4xl mx-auto px-4 sm:px-6 lg:px-8" },
         React.createElement("div", { className: "flex items-center justify-between h-16" },
           React.createElement("div", { className: "flex items-center gap-3" },
-            React.createElement("img", { src: "/logo.png", alt: "DPP Payments", className: "w-8 h-8 rounded-lg" }),
-            React.createElement("span", { className: "font-semibold text-lg text-gray-900" }, "DPP Payments")
+            React.createElement("img", { src: "/logo.png", alt: "PaySync", className: "w-8 h-8 rounded-lg" }),
+            React.createElement("span", { className: "font-semibold text-lg text-gray-900" }, "PaySync")
           ),
           React.createElement("a", { href: "/dashboard", className: "text-sm text-gray-600 hover:text-gray-900" }, "Dashboard")
         )
@@ -22,7 +22,7 @@ export default function PrivacyPolicyPage() {
 
         React.createElement("div", { className: "prose prose-gray max-w-none space-y-6 text-gray-700 text-sm leading-relaxed" },
 
-          React.createElement("p", null, "Perspective Holdings LLC (\"Company,\" \"we,\" \"us,\" or \"our\") operates the DPP Payments QuickBooks Integration application (\"Application\"). This Privacy Policy explains how we collect, use, store, and protect your information when you use the Application."),
+          React.createElement("p", null, "Perspective Holdings LLC (\"Company,\" \"we,\" \"us,\" or \"our\") operates the PaySync QuickBooks Integration application (\"Application\"). This Privacy Policy explains how we collect, use, store, and protect your information when you use the Application."),
 
           React.createElement("h2", { className: "text-lg font-semibold text-gray-900 mt-8" }, "1. Information We Collect"),
 
@@ -35,8 +35,8 @@ export default function PrivacyPolicyPage() {
             React.createElement("li", null, "Account information for deposit and income mapping")
           ),
 
-          React.createElement("h3", { className: "text-base font-medium text-gray-800 mt-4" }, "Information from DPP Payments"),
-          React.createElement("p", null, "When payment transactions are processed through DPP, we receive:"),
+          React.createElement("h3", { className: "text-base font-medium text-gray-800 mt-4" }, "Information from Deluxe"),
+          React.createElement("p", null, "When payment transactions are processed through Deluxe, we receive:"),
           React.createElement("ul", { className: "list-disc pl-6 space-y-1" },
             React.createElement("li", null, "Transaction amounts, dates, and status"),
             React.createElement("li", null, "Customer names and email addresses"),

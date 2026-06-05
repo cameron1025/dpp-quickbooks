@@ -76,8 +76,8 @@ function DashboardContent() {
       {/* Header */}
       <header style={{ background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
         <div style={{ maxWidth: "640px", margin: "0 auto", padding: "0 20px", height: "60px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <img src="/logo.png" alt="DPP Payments" style={{ width: "28px", height: "28px", borderRadius: "6px" }} />
-          <span style={{ fontWeight: 600, fontSize: "16px", color: "#111" }}>DPP Payments</span>
+          <img src="/logo.png" alt="PaySync" style={{ width: "28px", height: "28px", borderRadius: "6px" }} />
+          <span style={{ fontWeight: 600, fontSize: "16px", color: "#111" }}>PaySync</span>
         </div>
       </header>
 

@@ -8,8 +8,8 @@ export default function EULAPage() {
       React.createElement("div", { className: "max-w-4xl mx-auto px-4 sm:px-6 lg:px-8" },
         React.createElement("div", { className: "flex items-center justify-between h-16" },
           React.createElement("div", { className: "flex items-center gap-3" },
-            React.createElement("img", { src: "/logo.png", alt: "DPP Payments", className: "w-8 h-8 rounded-lg" }),
-            React.createElement("span", { className: "font-semibold text-lg text-gray-900" }, "DPP Payments")
+            React.createElement("img", { src: "/logo.png", alt: "PaySync", className: "w-8 h-8 rounded-lg" }),
+            React.createElement("span", { className: "font-semibold text-lg text-gray-900" }, "PaySync")
           ),
           React.createElement("a", { href: "/dashboard", className: "text-sm text-gray-600 hover:text-gray-900" }, "Dashboard")
         )
@@ -22,17 +22,17 @@ export default function EULAPage() {
 
         React.createElement("div", { className: "prose prose-gray max-w-none space-y-6 text-gray-700 text-sm leading-relaxed" },
 
-          React.createElement("p", null, "This End-User License Agreement (\"Agreement\") is a legal agreement between you (\"User,\" \"you,\" or \"your\") and Perspective Holdings LLC (\"Company,\" \"we,\" \"us,\" or \"our\") governing your use of the DPP Payments QuickBooks Integration application (\"Application\")."),
+          React.createElement("p", null, "This End-User License Agreement (\"Agreement\") is a legal agreement between you (\"User,\" \"you,\" or \"your\") and Perspective Holdings LLC (\"Company,\" \"we,\" \"us,\" or \"our\") governing your use of the PaySync QuickBooks Integration application (\"Application\")."),
 
           React.createElement("p", null, "By accessing or using the Application, you agree to be bound by this Agreement. If you do not agree, do not use the Application."),
 
           React.createElement("h2", { className: "text-lg font-semibold text-gray-900 mt-8" }, "1. License Grant"),
-          React.createElement("p", null, "We grant you a limited, non-exclusive, non-transferable, revocable license to use the Application solely for the purpose of synchronizing payment transaction data between DPP Payments and your QuickBooks Online account, in accordance with this Agreement."),
+          React.createElement("p", null, "We grant you a limited, non-exclusive, non-transferable, revocable license to use the Application solely for the purpose of synchronizing payment transaction data between your Deluxe payments and your QuickBooks Online account, in accordance with this Agreement."),
 
           React.createElement("h2", { className: "text-lg font-semibold text-gray-900 mt-8" }, "2. Permitted Use"),
           React.createElement("p", null, "You may use the Application to:"),
           React.createElement("ul", { className: "list-disc pl-6 space-y-1" },
-            React.createElement("li", null, "Connect your QuickBooks Online account to DPP Payments."),
+            React.createElement("li", null, "Connect your QuickBooks Online account to PaySync."),
             React.createElement("li", null, "Automatically sync payment transactions, customer records, and related financial data to QuickBooks Online."),
             React.createElement("li", null, "View sync status, history, and manage integration settings.")
           ),
