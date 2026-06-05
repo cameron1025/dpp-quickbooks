@@ -146,7 +146,17 @@ BEGIN
 END $$;
 
 -- ── 7. updated_at trigger for tracked_invoices ──────────────
--- Reuses update_updated_at_column() defined in 001_schema.sql.
+-- Ensure the shared helper exists (it is normally created by
+-- 001_schema.sql, but this migration is self-contained so it works
+-- even on databases provisioned another way, e.g. via Prisma).
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS update_tracked_invoices_updated_at ON tracked_invoices;
 CREATE TRIGGER update_tracked_invoices_updated_at
