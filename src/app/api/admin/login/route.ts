@@ -7,8 +7,9 @@ import {
   adminCookieValue,
   ADMIN_COOKIE_NAME,
 } from "@/lib/admin-auth";
+import { withRateLimit } from "@/lib/rate-limit";
 
-export async function POST(request: NextRequest) {
+async function handleLogin(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const password = typeof body?.password === "string" ? body.password : "";
 
@@ -35,6 +36,15 @@ export async function POST(request: NextRequest) {
   });
   return res;
 }
+
+// Brute-force protection: 5 attempts per IP per 15 minutes (returns 429 after).
+// Note: the limiter is in-memory per instance — good enough to blunt guessing;
+// for multi-instance, back it with a shared store later.
+export const POST = withRateLimit(handleLogin, {
+  max: 5,
+  windowMs: 15 * 60 * 1000,
+  keyPrefix: "admin-login",
+});
 
 export async function DELETE() {
   const res = NextResponse.json({ success: true });
