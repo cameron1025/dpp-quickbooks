@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
   if (!validation.success) {
     logger.warn("QB webhook: payload validation failed", {
       errors: validation.error.issues,
+      // Bounded raw payload so we can see exactly what Intuit sent if this
+      // ever fails again (QB payloads carry only entity ids/names, not PII).
+      payloadSample: body.slice(0, 2000),
     });
     return NextResponse.json(
       { error: "Invalid payload" },
