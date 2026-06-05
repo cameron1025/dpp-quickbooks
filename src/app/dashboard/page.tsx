@@ -125,7 +125,7 @@ function DashboardContent() {
             </div>
             <h1 style={{ fontSize: "22px", color: "#111", margin: "0 0 8px" }}>You're all set</h1>
             <p style={{ fontSize: "15px", color: "#555", lineHeight: 1.6, margin: "0 0 4px" }}>
-              {status.companyName ? <>QuickBooks (<b>{status.companyName}</b>) is connected.</> : "QuickBooks is connected."}
+              {status.companyName ? <>PaySync is connected to your QuickBooks (<b>{status.companyName}</b>).</> : "PaySync is connected to your QuickBooks."}
             </p>
             <p style={{ fontSize: "15px", color: "#555", lineHeight: 1.6, margin: "0 0 24px" }}>
               Your payments now sync to QuickBooks <b>automatically</b> — there's nothing else you need to do.
