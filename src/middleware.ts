@@ -20,6 +20,7 @@ const PUBLIC_ROUTES = [
   "/api/health",
   "/api/test",
   "/api/invoices/reminders",
+  "/api/sync/retry",
   "/embed",
   "/api/embed",
 ];

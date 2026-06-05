@@ -1,0 +1,34 @@
+name: PaySync scheduled jobs
+
+# Drives the two background jobs the app exposes:
+#   - /api/sync/retry        (retry failed DPP->QB syncs) — every 15 min
+#   - /api/invoices/reminders (send due invoice reminders) — hourly
+#
+# Both endpoints require the CRON_SECRET bearer token. Configure two repo
+# secrets under Settings -> Secrets and variables -> Actions:
+#   APP_URL      e.g. https://dpp-quickbooks-production.up.railway.app
+#   CRON_SECRET  the same value set in Railway
+#
+# Note: GitHub-scheduled workflows run in UTC, may be delayed a few minutes
+# under load, and are auto-disabled after ~60 days of repo inactivity.
+
+on:
+  schedule:
+    - cron: "0 * * * *"          # top of each hour — reminders + retry
+    - cron: "15,30,45 * * * *"   # other quarters — retry only
+  workflow_dispatch: {}           # allow manual runs from the Actions tab
+
+jobs:
+  scheduled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retry failed syncs
+        run: |
+          curl -fsS -X POST "${{ secrets.APP_URL }}/api/sync/retry" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Send invoice reminders (hourly only)
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'
+        run: |
+          curl -fsS -X POST "${{ secrets.APP_URL }}/api/invoices/reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
