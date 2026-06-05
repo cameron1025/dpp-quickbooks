@@ -26,6 +26,7 @@ interface Details {
     qb_connected_at: string | null;
     status: string;
     dpp_subscribed_at: string | null;
+    invoice_email_mode: "paysync" | "qb_native";
   };
   subscribed: boolean;
   hasCredentials: boolean;
@@ -126,6 +127,7 @@ export default function AdminMerchantDetail() {
   const [showSecret, setShowSecret] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [savingCreds, setSavingCreds] = useState(false);
+  const [savingMode, setSavingMode] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -176,6 +178,24 @@ export default function AdminMerchantDetail() {
       await load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  const setInvoiceMode = async (mode: "paysync" | "qb_native") => {
+    if (!data || data.merchant.invoice_email_mode === mode) return;
+    setSavingMode(true);
+    setNotice("");
+    try {
+      const res = await fetch(`/api/admin/merchants/${id}/invoice-mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const body = await res.json().catch(() => ({}));
+      setNotice(res.ok ? "Invoice email mode updated." : `Failed: ${body.error || res.status}`);
+      if (res.ok) await load();
+    } finally {
+      setSavingMode(false);
     }
   };
 
@@ -361,6 +381,60 @@ export default function AdminMerchantDetail() {
                     {savingCreds ? "Saving…" : "Save"}
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Invoice email mode */}
+            <div style={card}>
+              <h2 style={{ fontSize: "15px", margin: "0 0 4px" }}>Invoice email</h2>
+              <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
+                How the Deluxe pay link reaches the customer when an invoice is created.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {([
+                  {
+                    value: "paysync" as const,
+                    title: "PaySync sends the email",
+                    desc: "PaySync sends its own branded email with the pay link (when the merchant didn't send from QuickBooks).",
+                  },
+                  {
+                    value: "qb_native" as const,
+                    title: "Embed link in QuickBooks invoice",
+                    desc: "PaySync adds the pay link to the invoice message, so it appears in QuickBooks' own email, PDF, and online invoice view. PaySync won't send a separate email. (Best when the merchant emails from QuickBooks. Note: for an immediate “Save and send,” QB may email before the link is added, but it still shows on the invoice/PDF/online view.)",
+                  },
+                ]).map((opt) => {
+                  const active = data.merchant.invoice_email_mode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setInvoiceMode(opt.value)}
+                      disabled={savingMode}
+                      style={{
+                        textAlign: "left",
+                        padding: "12px 14px",
+                        borderRadius: "10px",
+                        border: active ? "2px solid #2CA01C" : "1px solid #d0d0d7",
+                        background: active ? "#F0FDF4" : "#fff",
+                        cursor: savingMode ? "default" : "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <span
+                          style={{
+                            width: "14px",
+                            height: "14px",
+                            borderRadius: "50%",
+                            border: active ? "4px solid #2CA01C" : "2px solid #9ca3af",
+                            display: "inline-block",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#111" }}>{opt.title}</span>
+                      </div>
+                      <p style={{ fontSize: "12px", color: "#6b7280", margin: "0 0 0 22px", lineHeight: 1.5 }}>{opt.desc}</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

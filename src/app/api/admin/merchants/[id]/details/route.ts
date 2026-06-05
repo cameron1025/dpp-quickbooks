@@ -111,6 +111,7 @@ export async function GET(
       created_at: merchant.created_at,
       dpp_subscribed_at: merchant.dpp_subscribed_at,
       dpp_subscription_ids: merchant.dpp_subscription_ids,
+      invoice_email_mode: merchant.invoice_email_mode || "paysync",
     },
     subscribed: !!merchant.dpp_subscribed_at,
     hasCredentials: !!credentials,
