@@ -29,6 +29,7 @@ interface Details {
   };
   subscribed: boolean;
   hasCredentials: boolean;
+  credentials: { clientId: string; clientSecret: string; partnerToken: string } | null;
   connectionHealth: "healthy" | "degraded" | "disconnected";
   settings: Record<string, unknown>;
   reminderSettings: Record<string, unknown>;
@@ -54,6 +55,28 @@ const cell: React.CSSProperties = {
   fontSize: "13px",
   textAlign: "left",
   verticalAlign: "middle",
+};
+const fieldLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  color: "#6b7280",
+  marginBottom: "4px",
+};
+const fieldInput: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  fontSize: "14px",
+  border: "1px solid #d0d0d7",
+  borderRadius: "8px",
+  boxSizing: "border-box",
+};
+const eyeButton: React.CSSProperties = {
+  padding: "0 14px",
+  fontSize: "16px",
+  border: "1px solid #d0d0d7",
+  background: "#fff",
+  borderRadius: "8px",
+  cursor: "pointer",
 };
 
 function Pill({ ok, label }: { ok: boolean; label: string }) {
@@ -96,9 +119,12 @@ export default function AdminMerchantDetail() {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [midField, setMidField] = useState("");
   const [cId, setCId] = useState("");
   const [cSecret, setCSecret] = useState("");
   const [pToken, setPToken] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const [savingCreds, setSavingCreds] = useState(false);
 
   const load = useCallback(async () => {
@@ -122,6 +148,18 @@ export default function AdminMerchantDetail() {
     load();
   }, [load]);
 
+  // Prefill the MID + credential fields from the loaded merchant (so saved
+  // values stay in the fields rather than disappearing).
+  useEffect(() => {
+    if (!data) return;
+    setMidField(data.merchant.dpp_merchant_id || "");
+    if (data.credentials) {
+      setCId(data.credentials.clientId || "");
+      setCSecret(data.credentials.clientSecret || "");
+      setPToken(data.credentials.partnerToken || "");
+    }
+  }, [data]);
+
   const act = async (action: "subscribe" | "disconnect") => {
     setBusy(action);
     setNotice("");
@@ -141,33 +179,28 @@ export default function AdminMerchantDetail() {
     }
   };
 
-  const saveCreds = async () => {
-    if (!data?.merchant.dpp_merchant_id) return;
-    if (!cId.trim() || !cSecret.trim() || !pToken.trim()) {
-      setNotice("All three credential fields are required.");
+  const saveDppConfig = async () => {
+    if (!midField.trim()) {
+      setNotice("Deluxe MID is required.");
       return;
     }
     setSavingCreds(true);
     setNotice("");
     try {
-      const res = await fetch("/api/admin/dpp-credentials", {
+      const res = await fetch(`/api/admin/merchants/${id}/dpp-config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mid: data.merchant.dpp_merchant_id,
+          mid: midField.trim(),
           clientId: cId.trim(),
           clientSecret: cSecret.trim(),
           partnerToken: pToken.trim(),
         }),
       });
       const body = await res.json().catch(() => ({}));
-      setNotice(res.ok ? "Deluxe credentials saved." : `Failed: ${body.error || res.status}`);
-      if (res.ok) {
-        setCId("");
-        setCSecret("");
-        setPToken("");
-        await load();
-      }
+      setNotice(res.ok ? "Saved." : `Failed: ${body.error || res.status}`);
+      // Reload so the fields repopulate from the saved values (they don't clear).
+      if (res.ok) await load();
     } finally {
       setSavingCreds(false);
     }
@@ -262,53 +295,72 @@ export default function AdminMerchantDetail() {
               )}
             </div>
 
-            {/* Deluxe credentials */}
+            {/* Deluxe MID + credentials */}
             <div style={card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <h2 style={{ fontSize: "15px", margin: 0 }}>Deluxe credentials</h2>
+                <h2 style={{ fontSize: "15px", margin: 0 }}>Deluxe MID & credentials</h2>
                 <Pill ok={data.hasCredentials} label={data.hasCredentials ? "Configured" : "Not configured"} />
               </div>
-              <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
-                {data.hasCredentials
-                  ? "Stored and encrypted. Enter new values to replace them."
-                  : "Required — this client's webhooks and payment links use their own Deluxe account."}
+              <p style={{ fontSize: "12px", color: "#888", margin: "0 0 14px" }}>
+                Used for this client's webhook subscriptions and payment links. Stored encrypted.
               </p>
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <input
-                  value={cId}
-                  onChange={(e) => setCId(e.target.value)}
-                  placeholder="Client ID"
-                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-                />
-                <input
-                  type="password"
-                  value={cSecret}
-                  onChange={(e) => setCSecret(e.target.value)}
-                  placeholder="Client Secret"
-                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-                />
-                <input
-                  value={pToken}
-                  onChange={(e) => setPToken(e.target.value)}
-                  placeholder="Partner Token"
-                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-                />
-                <button
-                  onClick={saveCreds}
-                  disabled={savingCreds}
-                  style={{
-                    padding: "10px 18px",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#fff",
-                    background: savingCreds ? "#9CA3AF" : "#16a34a",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: savingCreds ? "default" : "pointer",
-                  }}
-                >
-                  {savingCreds ? "Saving…" : "Save credentials"}
-                </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "560px" }}>
+                <div>
+                  <label style={fieldLabel}>Deluxe MID</label>
+                  <input value={midField} onChange={(e) => setMidField(e.target.value)} placeholder="Deluxe MID" style={fieldInput} />
+                </div>
+                <div>
+                  <label style={fieldLabel}>Client ID</label>
+                  <input value={cId} onChange={(e) => setCId(e.target.value)} placeholder="Client ID" style={fieldInput} />
+                </div>
+                <div>
+                  <label style={fieldLabel}>Client Secret</label>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type={showSecret ? "text" : "password"}
+                      value={cSecret}
+                      onChange={(e) => setCSecret(e.target.value)}
+                      placeholder="Client Secret"
+                      style={{ ...fieldInput, flex: 1 }}
+                    />
+                    <button type="button" onClick={() => setShowSecret((s) => !s)} aria-label="Toggle client secret visibility" style={eyeButton}>
+                      {showSecret ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label style={fieldLabel}>Partner Token</label>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type={showToken ? "text" : "password"}
+                      value={pToken}
+                      onChange={(e) => setPToken(e.target.value)}
+                      placeholder="Partner Token"
+                      style={{ ...fieldInput, flex: 1 }}
+                    />
+                    <button type="button" onClick={() => setShowToken((s) => !s)} aria-label="Toggle partner token visibility" style={eyeButton}>
+                      {showToken ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <button
+                    onClick={saveDppConfig}
+                    disabled={savingCreds}
+                    style={{
+                      padding: "10px 22px",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: "#fff",
+                      background: savingCreds ? "#9CA3AF" : "#16a34a",
+                      border: "none",
+                      borderRadius: "8px",
+                      cursor: savingCreds ? "default" : "pointer",
+                    }}
+                  >
+                    {savingCreds ? "Saving…" : "Save"}
+                  </button>
+                </div>
               </div>
             </div>
 

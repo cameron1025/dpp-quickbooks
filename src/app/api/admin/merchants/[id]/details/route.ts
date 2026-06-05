@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getValidTokens, PaymentSyncService } from "@/lib/quickbooks";
 import { isValidAdminCookie, ADMIN_COOKIE_NAME } from "@/lib/admin-auth";
-import { hasMerchantDppCredentials } from "@/lib/dpp/credentials";
+import { getMerchantDppCredentialsOrNull } from "@/lib/dpp/credentials";
 import { logger } from "@/lib/logger";
 
 export async function GET(
@@ -92,9 +92,11 @@ export async function GET(
     reminder_reply_to: merchant.reminder_reply_to ?? null,
   };
 
-  const hasCredentials = merchant.dpp_merchant_id
-    ? await hasMerchantDppCredentials(merchant.dpp_merchant_id)
-    : false;
+  // Operator-only panel: return the stored credentials so the admin can view
+  // (eye-toggle) and edit them. Admin-gated + HTTPS.
+  const credentials = merchant.dpp_merchant_id
+    ? await getMerchantDppCredentialsOrNull(merchant.dpp_merchant_id)
+    : null;
 
   return NextResponse.json({
     merchant: {
@@ -111,7 +113,8 @@ export async function GET(
       dpp_subscription_ids: merchant.dpp_subscription_ids,
     },
     subscribed: !!merchant.dpp_subscribed_at,
-    hasCredentials,
+    hasCredentials: !!credentials,
+    credentials,
     connectionHealth,
     settings: merchant.settings || {},
     reminderSettings,
