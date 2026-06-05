@@ -76,17 +76,23 @@ export const currencySchema = z
   .length(3, "Currency must be 3-character ISO code")
   .regex(/^[A-Z]{3}$/, "Invalid currency code");
 
+// Lenient by design: real Intuit payloads vary more than the docs imply
+// (e.g. an "Emailed" operation, realmId/id typing). We validate only the
+// structure we depend on and normalize the rest, letting the handler decide
+// how to act on each operation. One unexpected field must not drop the event.
 export const webhookPayloadSchema = z.object({
   eventNotifications: z.array(
     z.object({
-      realmId: realmIdSchema,
+      // Intuit sends realmId as a string; accept a number too and normalize.
+      realmId: z.union([z.string(), z.number()]).transform((v) => String(v)),
       dataChangeEvent: z.object({
         entities: z.array(
           z.object({
             name: z.string(),
-            id: z.string(),
-            operation: z.enum(["Create", "Update", "Delete", "Merge", "Void"]),
-            lastUpdated: z.string(),
+            id: z.union([z.string(), z.number()]).transform((v) => String(v)),
+            // Create/Update/Delete/Merge/Void/Emailed/… — accept any string.
+            operation: z.string().optional().default("Update"),
+            lastUpdated: z.string().optional(),
           })
         ),
       }),
