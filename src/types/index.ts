@@ -15,6 +15,8 @@ export interface Merchant {
   qb_connected_at: string | null;
   qb_disconnected_at: string | null;
   dpp_merchant_id: string | null;
+  dpp_subscription_ids: Record<string, string> | null;
+  dpp_subscribed_at: string | null;
   status: "active" | "inactive" | "suspended";
   settings: MerchantSettings;
 }

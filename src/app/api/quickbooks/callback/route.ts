@@ -13,6 +13,7 @@ import {
 } from "@/lib/quickbooks";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { realmIdSchema } from "@/lib/sanitize";
+import { ensureWebhookSubscription } from "@/lib/dpp/subscribe";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
@@ -87,6 +88,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ── Onboarding: a validated Deluxe MID carried from the connect step ──
+    const onboardMid = request.cookies.get("onboard_mid")?.value || null;
+
     // ── Upsert merchant record ──────────────────────────────
     const supabase = getSupabaseAdmin();
 
@@ -105,6 +109,9 @@ export async function GET(request: NextRequest) {
           qb_disconnected_at: null,
           status: "active",
           updated_at: new Date().toISOString(),
+          // Link the Deluxe MID atomically during onboarding (only when present
+          // so re-connecting without an onboarding link never clears it).
+          ...(onboardMid && { dpp_merchant_id: onboardMid }),
         },
         { onConflict: "email" }
       )
@@ -122,6 +129,21 @@ export async function GET(request: NextRequest) {
 
     // ── Store encrypted tokens ──────────────────────────────
     await storeTokens(merchant.id, tokens);
+
+    // ── Auto-subscribe DPP webhooks for onboarded merchants ──
+    // Best-effort: the connection still succeeds if this hiccups. Failures are
+    // visible in the admin health view and re-subscribable from there.
+    if (onboardMid) {
+      try {
+        await ensureWebhookSubscription(merchant.id, onboardMid);
+      } catch (subErr) {
+        logger.error("Auto-subscribe failed during onboarding (continuing)", {
+          merchantId: merchant.id,
+          mid: onboardMid,
+          error: subErr instanceof Error ? subErr.message : String(subErr),
+        });
+      }
+    }
 
     // ── Set session cookie ──────────────────────────────────
     // Check if this was opened as a popup (from embed view)
@@ -154,6 +176,7 @@ export async function GET(request: NextRequest) {
       });
       popupResponse.cookies.delete("qb_oauth_state");
       popupResponse.cookies.delete("qb_oauth_popup");
+      popupResponse.cookies.delete("onboard_mid");
       return popupResponse;
     }
 
@@ -169,8 +192,9 @@ export async function GET(request: NextRequest) {
       path: "/",
     });
 
-    // Clear the OAuth state cookie
+    // Clear the OAuth state + onboarding cookies
     response.cookies.delete("qb_oauth_state");
+    response.cookies.delete("onboard_mid");
 
     logger.info("OAuth flow completed successfully", {
       merchantId: merchant.id,
