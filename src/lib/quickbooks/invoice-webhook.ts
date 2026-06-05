@@ -14,6 +14,7 @@ import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { generatePayNowUrl } from '@/lib/pay-now-url';
+import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -132,22 +133,37 @@ async function handleInvoiceCreate(
     const billAddr = invoice.BillAddr || {};
     const customerPhone = invoice.PrimaryPhone?.FreeFormNumber;
 
-    // Generate pre-filled DPP payment form URL
-    const payNowUrl = generatePayNowUrl({
-      merchantId: merchant.dpp_merchant_id,
-      invoiceNumber,
-      amount: balanceDue,
-      customerEmail,
-      customerName,
-      customerPhone,
-      billingAddress: {
-        address: billAddr.Line1,
-        city: billAddr.City,
-        state: billAddr.CountrySubDivisionCode,
-        zip: billAddr.PostalCode,
-        country: billAddr.Country || 'US',
-      },
-    });
+    // Prefer a Deluxe payment link (guarantees Card + ACH and locks the amount
+    // to the balance). Fall back to the static Online Form if the API fails.
+    let payNowUrl: string;
+    try {
+      const link = await createInvoicePaymentLink({
+        invoiceNumber,
+        amount: balanceDue,
+        customerName,
+      });
+      payNowUrl = link.url;
+    } catch (linkErr) {
+      console.warn(
+        `[Invoice Webhook] Payment link API failed for invoice ${invoiceId}; falling back to static form:`,
+        linkErr
+      );
+      payNowUrl = generatePayNowUrl({
+        merchantId: merchant.dpp_merchant_id,
+        invoiceNumber,
+        amount: balanceDue,
+        customerEmail,
+        customerName,
+        customerPhone,
+        billingAddress: {
+          address: billAddr.Line1,
+          city: billAddr.City,
+          state: billAddr.CountrySubDivisionCode,
+          zip: billAddr.PostalCode,
+          country: billAddr.Country || 'US',
+        },
+      });
+    }
 
     // Upsert into tracked_invoices
     const { error: trackErr } = await supabase
