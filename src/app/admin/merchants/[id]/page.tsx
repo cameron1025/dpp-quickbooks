@@ -15,6 +15,18 @@ interface SyncLogEntry {
   error_message: string | null;
 }
 
+interface ReminderForm {
+  reminders_enabled: boolean;
+  reminder_send_initial: boolean;
+  reminder_before_due_days: number;
+  reminder_on_due_date: boolean;
+  reminder_overdue_3: boolean;
+  reminder_overdue_7: boolean;
+  reminder_overdue_14: boolean;
+  reminder_from_name: string;
+  reminder_reply_to: string;
+}
+
 interface Details {
   merchant: {
     id: string;
@@ -128,6 +140,8 @@ export default function AdminMerchantDetail() {
   const [showToken, setShowToken] = useState(false);
   const [savingCreds, setSavingCreds] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
+  const [rem, setRem] = useState<ReminderForm | null>(null);
+  const [savingRem, setSavingRem] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -160,6 +174,18 @@ export default function AdminMerchantDetail() {
       setCSecret(data.credentials.clientSecret || "");
       setPToken(data.credentials.partnerToken || "");
     }
+    const r = data.reminderSettings as Record<string, unknown>;
+    setRem({
+      reminders_enabled: !!r.reminders_enabled,
+      reminder_send_initial: (r.reminder_send_initial as boolean) ?? true,
+      reminder_before_due_days: (r.reminder_before_due_days as number) ?? 3,
+      reminder_on_due_date: (r.reminder_on_due_date as boolean) ?? true,
+      reminder_overdue_3: (r.reminder_overdue_3 as boolean) ?? true,
+      reminder_overdue_7: (r.reminder_overdue_7 as boolean) ?? true,
+      reminder_overdue_14: (r.reminder_overdue_14 as boolean) ?? true,
+      reminder_from_name: (r.reminder_from_name as string) ?? "Billing",
+      reminder_reply_to: (r.reminder_reply_to as string) ?? "",
+    });
   }, [data]);
 
   const act = async (action: "subscribe" | "disconnect") => {
@@ -178,6 +204,24 @@ export default function AdminMerchantDetail() {
       await load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  const saveReminders = async () => {
+    if (!rem) return;
+    setSavingRem(true);
+    setNotice("");
+    try {
+      const res = await fetch(`/api/admin/merchants/${id}/reminder-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rem),
+      });
+      const body = await res.json().catch(() => ({}));
+      setNotice(res.ok ? "Reminder settings saved." : `Failed: ${body.error || res.status}`);
+      if (res.ok) await load();
+    } finally {
+      setSavingRem(false);
     }
   };
 
@@ -467,17 +511,63 @@ export default function AdminMerchantDetail() {
               ))}
             </div>
 
-            {/* Settings summary */}
-            <div style={card}>
-              <h2 style={{ fontSize: "15px", margin: "0 0 10px" }}>Settings</h2>
-              <p style={{ fontSize: "13px", color: "#444", margin: "0 0 4px" }}>
-                Auto-sync: <b>{String((data.settings as any).auto_sync_payments ?? "—")}</b> ·
-                Frequency: <b>{String((data.settings as any).sync_frequency ?? "—")}</b>
-              </p>
-              <p style={{ fontSize: "13px", color: "#444", margin: 0 }}>
-                Reminders enabled: <b>{String((data.reminderSettings as any).reminders_enabled ?? "—")}</b>
-              </p>
-            </div>
+            {/* Reminders & invoice email (editable) */}
+            {rem && (
+              <div style={card}>
+                <h2 style={{ fontSize: "15px", margin: "0 0 4px" }}>Reminders & invoice email</h2>
+                <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
+                  Master switch for PaySync's invoice emails and reminders. If reminders are off,
+                  PaySync sends nothing on a new invoice. (Payments always sync regardless.)
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: "520px" }}>
+                  {[
+                    ["reminders_enabled", "Reminders enabled (master switch)"],
+                    ["reminder_send_initial", "Send the initial invoice email"],
+                    ["reminder_on_due_date", "Remind on the due date"],
+                    ["reminder_overdue_3", "Remind 3 days overdue"],
+                    ["reminder_overdue_7", "Remind 7 days overdue"],
+                    ["reminder_overdue_14", "Remind 14 days overdue"],
+                  ].map(([key, label]) => (
+                    <label key={key} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#444", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!(rem as unknown as Record<string, boolean>)[key]}
+                        onChange={(e) => setRem((p) => (p ? { ...p, [key]: e.target.checked } : p))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <label style={{ fontSize: "13px", color: "#444" }}>Days before due to remind:</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={rem.reminder_before_due_days}
+                      onChange={(e) => setRem((p) => (p ? { ...p, reminder_before_due_days: Number(e.target.value) } : p))}
+                      style={{ ...fieldInput, width: "80px" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabel}>From name</label>
+                    <input value={rem.reminder_from_name} onChange={(e) => setRem((p) => (p ? { ...p, reminder_from_name: e.target.value } : p))} style={fieldInput} />
+                  </div>
+                  <div>
+                    <label style={fieldLabel}>Reply-to email (optional)</label>
+                    <input value={rem.reminder_reply_to} onChange={(e) => setRem((p) => (p ? { ...p, reminder_reply_to: e.target.value } : p))} placeholder="" style={fieldInput} />
+                  </div>
+                  <div>
+                    <button
+                      onClick={saveReminders}
+                      disabled={savingRem}
+                      style={{ padding: "10px 22px", fontSize: "14px", fontWeight: 600, color: "#fff", background: savingRem ? "#9CA3AF" : "#16a34a", border: "none", borderRadius: "8px", cursor: savingRem ? "default" : "pointer" }}
+                    >
+                      {savingRem ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Sync history */}
             <div style={card}>
