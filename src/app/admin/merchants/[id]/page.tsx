@@ -143,9 +143,11 @@ export default function AdminMerchantDetail() {
   const [rem, setRem] = useState<ReminderForm | null>(null);
   const [savingRem, setSavingRem] = useState(false);
 
-  const load = useCallback(async () => {
+  // `silent` refreshes data without flashing the full-page "Loading…" state,
+  // so saves/toggles update in place instead of appearing to reload.
+  const load = useCallback(async (silent = false) => {
     if (!id) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const res = await fetch(`/api/admin/merchants/${id}/details`);
     if (res.status === 401) {
       window.location.href = "/admin/login";
@@ -157,7 +159,7 @@ export default function AdminMerchantDetail() {
       return;
     }
     setData(await res.json());
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -201,7 +203,7 @@ export default function AdminMerchantDetail() {
             : "Disconnected from QuickBooks."
           : `Failed: ${body.error || res.status}`
       );
-      await load();
+      await load(true);
     } finally {
       setBusy(null);
     }
@@ -219,7 +221,7 @@ export default function AdminMerchantDetail() {
       });
       const body = await res.json().catch(() => ({}));
       setNotice(res.ok ? "Reminder settings saved." : `Failed: ${body.error || res.status}`);
-      if (res.ok) await load();
+      if (res.ok) await load(true);
     } finally {
       setSavingRem(false);
     }
@@ -237,7 +239,12 @@ export default function AdminMerchantDetail() {
       });
       const body = await res.json().catch(() => ({}));
       setNotice(res.ok ? "Invoice email mode updated." : `Failed: ${body.error || res.status}`);
-      if (res.ok) await load();
+      // Update in place so the selection just flips (no full-page reload).
+      if (res.ok) {
+        setData((prev) =>
+          prev ? { ...prev, merchant: { ...prev.merchant, invoice_email_mode: mode } } : prev
+        );
+      }
     } finally {
       setSavingMode(false);
     }
@@ -264,7 +271,7 @@ export default function AdminMerchantDetail() {
       const body = await res.json().catch(() => ({}));
       setNotice(res.ok ? "Saved." : `Failed: ${body.error || res.status}`);
       // Reload so the fields repopulate from the saved values (they don't clear).
-      if (res.ok) await load();
+      if (res.ok) await load(true);
     } finally {
       setSavingCreds(false);
     }
