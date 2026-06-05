@@ -40,9 +40,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Which MIDs have Deluxe credentials configured.
+  const { data: credRows } = await supabase.from("dpp_credentials").select("mid");
+  const configuredMids = new Set((credRows || []).map((r) => r.mid));
+
   const result = (merchants || []).map((m) => ({
     ...m,
     subscribed: !!m.dpp_subscribed_at,
+    has_credentials: !!m.dpp_merchant_id && configuredMids.has(m.dpp_merchant_id),
     last_sync: lastSyncByMerchant[m.id] || null,
   }));
 

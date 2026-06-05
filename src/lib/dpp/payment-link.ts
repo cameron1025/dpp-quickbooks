@@ -11,11 +11,13 @@
 // if the invoice number doesn't propagate; the invoice number is also sent in
 // customData as a secondary match key.
 //
-// Requires env: DPP_CLIENT_ID, DPP_CLIENT_SECRET, DPP_PARTNER_TOKEN
-// Optional: DPP_API_BASE, DPP_ACCEPT_PAYMENT_METHODS (default "Card,ACH"),
-//           DPP_PAYMENT_LINK_EXPIRY (default "9 DAYS")
+// Uses the merchant's OWN Deluxe credentials so the link is created under
+// their account and funds route to them.
+// Optional env: DPP_API_BASE, DPP_ACCEPT_PAYMENT_METHODS (default "Card,ACH"),
+//               DPP_PAYMENT_LINK_EXPIRY (default "9 DAYS")
 
 import { getDeluxeAccessToken } from "./subscribe";
+import { DppCredentials } from "./credentials";
 import { logger } from "@/lib/logger";
 
 function apiBase(): string {
@@ -52,12 +54,13 @@ export interface PaymentLinkResult {
  * Throws on failure so callers can fall back to the static form.
  */
 export async function createInvoicePaymentLink(
-  params: InvoicePaymentLinkParams
+  params: InvoicePaymentLinkParams,
+  creds: DppCredentials
 ): Promise<PaymentLinkResult> {
-  const partnerToken = process.env.DPP_PARTNER_TOKEN;
-  if (!partnerToken) throw new Error("DPP_PARTNER_TOKEN not configured");
+  const partnerToken = creds.partnerToken;
+  if (!partnerToken) throw new Error("Missing Deluxe partnerToken");
 
-  const token = await getDeluxeAccessToken();
+  const token = await getDeluxeAccessToken(creds);
   const { firstName, lastName } = splitName(params.customerName);
 
   const body = {

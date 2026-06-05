@@ -15,6 +15,7 @@ import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
+import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
 
 type EmailType = 'initial' | 'before_due' | 'due_today' | 'overdue_3' | 'overdue_7' | 'overdue_14';
 
@@ -109,16 +110,22 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
       continue;
     }
 
-    // Regenerate a fresh payment link for the CURRENT balance so the reminder's
-    // link is never expired and always reflects the right amount. Fall back to
-    // the stored link if the API call fails.
-    let payNowUrl = invoice.pay_now_url || '#';
+    // Regenerate a fresh payment link for the CURRENT balance (under the
+    // client's own Deluxe account) so the reminder's link is never expired and
+    // reflects the right amount. Fall back to the stored link on a transient
+    // API error; skip the reminder entirely if there's no valid link.
+    let payNowUrl: string | null =
+      invoice.pay_now_url && invoice.pay_now_url !== '#' ? invoice.pay_now_url : null;
     try {
-      const link = await createInvoicePaymentLink({
-        invoiceNumber: invoice.invoice_number,
-        amount: invoice.balance_due,
-        customerName: invoice.customer_name || undefined,
-      });
+      const creds = await getMerchantDppCredentials(merchant.dpp_merchant_id);
+      const link = await createInvoicePaymentLink(
+        {
+          invoiceNumber: invoice.invoice_number,
+          amount: invoice.balance_due,
+          customerName: invoice.customer_name || undefined,
+        },
+        creds
+      );
       payNowUrl = link.url;
       await supabase
         .from('tracked_invoices')
@@ -126,9 +133,17 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
         .eq('id', invoice.id);
     } catch (linkErr) {
       console.warn(
-        `[Reminder Scheduler] Payment link regen failed for ${invoice.invoice_number}; using existing link:`,
+        `[Reminder Scheduler] Payment link regen failed for ${invoice.invoice_number} (MID ${merchant.dpp_merchant_id}); using existing link if any:`,
         linkErr
       );
+    }
+
+    if (!payNowUrl) {
+      console.warn(
+        `[Reminder Scheduler] No payment link for ${invoice.invoice_number}; skipping reminder (check Deluxe credentials).`
+      );
+      result.skipped++;
+      continue;
     }
 
     try {

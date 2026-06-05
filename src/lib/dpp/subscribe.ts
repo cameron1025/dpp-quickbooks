@@ -5,12 +5,14 @@
 // pointing at our webhook endpoint. Server-side port of
 // scripts/dpp-subscribe.mjs, used during automated onboarding.
 //
-// Requires env: DPP_CLIENT_ID, DPP_CLIENT_SECRET, DPP_PARTNER_TOKEN,
-//               DPP_WEBHOOK_URL_SECRET, NEXT_PUBLIC_APP_URL
+// Uses each merchant's OWN Deluxe credentials (loaded by MID), so the
+// subscription is created under their account.
+// Requires env: DPP_WEBHOOK_URL_SECRET, NEXT_PUBLIC_APP_URL
 // Optional:     DPP_API_BASE (default https://api.deluxe.com),
 //               DPP_SUBSCRIBE_USERNAME (defaults to the merchant's MID)
 
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getMerchantDppCredentials, DppCredentials } from "@/lib/dpp/credentials";
 import { logger } from "@/lib/logger";
 
 const EVENT_TYPES = ["TRANSACTION", "ACH REJECT"] as const;
@@ -27,14 +29,15 @@ interface SubscribeResultEntry {
 }
 
 /**
- * Obtain a Deluxe API access token via client_credentials.
+ * Obtain a Deluxe API access token via client_credentials, using the given
+ * merchant's credentials.
  */
-export async function getDeluxeAccessToken(): Promise<string> {
-  const clientId = process.env.DPP_CLIENT_ID;
-  const clientSecret = process.env.DPP_CLIENT_SECRET;
-
+export async function getDeluxeAccessToken(
+  creds: Pick<DppCredentials, "clientId" | "clientSecret">
+): Promise<string> {
+  const { clientId, clientSecret } = creds;
   if (!clientId || !clientSecret) {
-    throw new Error("DPP_CLIENT_ID / DPP_CLIENT_SECRET not configured");
+    throw new Error("Missing Deluxe clientId / clientSecret");
   }
 
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
@@ -76,14 +79,15 @@ function buildEventUri(): string {
  * Returns a map of eventType -> eventSubscriptionId.
  */
 export async function subscribeMerchantWebhooks(
-  mid: string
+  mid: string,
+  creds: DppCredentials
 ): Promise<Record<string, string>> {
-  const partnerToken = process.env.DPP_PARTNER_TOKEN;
-  if (!partnerToken) throw new Error("DPP_PARTNER_TOKEN not configured");
+  const partnerToken = creds.partnerToken;
+  if (!partnerToken) throw new Error("Missing Deluxe partnerToken");
 
   const userName = process.env.DPP_SUBSCRIBE_USERNAME || mid;
   const eventUri = buildEventUri();
-  const accessToken = await getDeluxeAccessToken();
+  const accessToken = await getDeluxeAccessToken(creds);
 
   const res = await fetch(`${apiBase()}/dpp/v1/events/subscribe`, {
     method: "POST",
@@ -149,7 +153,8 @@ export async function ensureWebhookSubscription(
     }
   }
 
-  const ids = await subscribeMerchantWebhooks(mid);
+  const creds = await getMerchantDppCredentials(mid);
+  const ids = await subscribeMerchantWebhooks(mid, creds);
 
   await supabase
     .from("merchants")
