@@ -7,10 +7,12 @@
 // - Security header augmentation
 
 import { NextRequest, NextResponse } from "next/server";
+import { isValidAdminCookie, ADMIN_COOKIE_NAME } from "@/lib/admin-auth";
 
 // Routes that don't require authentication
 const PUBLIC_ROUTES = [
   "/learn-more",
+  "/onboard",
   "/api/webhooks",
   "/api/auth/disconnect-webhook",
   "/api/quickbooks/connect",
@@ -22,8 +24,25 @@ const PUBLIC_ROUTES = [
   "/api/embed",
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ── Admin auth (separate from merchant auth) ──────────────
+  // The login endpoints are open; everything else under /admin and
+  // /api/admin requires a valid admin session cookie.
+  if (pathname === "/admin/login" || pathname === "/api/admin/login") {
+    return NextResponse.next();
+  }
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    const ok = await isValidAdminCookie(
+      request.cookies.get(ADMIN_COOKIE_NAME)?.value
+    );
+    if (ok) return NextResponse.next();
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL("/admin/login", request.url));
+  }
 
   // ── Skip public routes ────────────────────────────────────
   const isPublic = PUBLIC_ROUTES.some(
