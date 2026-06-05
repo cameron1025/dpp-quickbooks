@@ -14,6 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
+import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
 
 type EmailType = 'initial' | 'before_due' | 'due_today' | 'overdue_3' | 'overdue_7' | 'overdue_14';
 
@@ -108,6 +109,28 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
       continue;
     }
 
+    // Regenerate a fresh payment link for the CURRENT balance so the reminder's
+    // link is never expired and always reflects the right amount. Fall back to
+    // the stored link if the API call fails.
+    let payNowUrl = invoice.pay_now_url || '#';
+    try {
+      const link = await createInvoicePaymentLink({
+        invoiceNumber: invoice.invoice_number,
+        amount: invoice.balance_due,
+        customerName: invoice.customer_name || undefined,
+      });
+      payNowUrl = link.url;
+      await supabase
+        .from('tracked_invoices')
+        .update({ pay_now_url: link.url, updated_at: new Date().toISOString() })
+        .eq('id', invoice.id);
+    } catch (linkErr) {
+      console.warn(
+        `[Reminder Scheduler] Payment link regen failed for ${invoice.invoice_number}; using existing link:`,
+        linkErr
+      );
+    }
+
     try {
       const sent = await sendInvoiceEmail({
         merchantId: merchant.id,
@@ -117,7 +140,7 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
         customerName: invoice.customer_name || 'Customer',
         amount: invoice.balance_due,
         dueDate: invoice.due_date,
-        payNowUrl: invoice.pay_now_url || '#',
+        payNowUrl,
         emailType: emailType as EmailType,
         fromName: merchant.reminder_from_name,
         replyTo: merchant.reminder_reply_to,
