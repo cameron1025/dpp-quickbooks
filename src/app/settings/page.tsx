@@ -134,7 +134,7 @@ export default function SettingsPage() {
               <div>
                 <p className="font-medium text-gray-900">Auto-sync payments</p>
                 <p className="text-sm text-gray-500">
-                  Automatically record DPP payments in QuickBooks
+                  Automatically record Deluxe payments in QuickBooks
                 </p>
               </div>
               <button

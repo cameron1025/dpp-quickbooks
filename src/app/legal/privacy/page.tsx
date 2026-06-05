@@ -50,7 +50,7 @@ export default function PrivacyPolicyPage() {
           React.createElement("h2", { className: "text-lg font-semibold text-gray-900 mt-8" }, "2. How We Use Your Information"),
           React.createElement("p", null, "We use the information we collect to:"),
           React.createElement("ul", { className: "list-disc pl-6 space-y-1" },
-            React.createElement("li", null, "Synchronize payment transactions from DPP to your QuickBooks Online account."),
+            React.createElement("li", null, "Synchronize payment transactions from Deluxe to your QuickBooks Online account."),
             React.createElement("li", null, "Create and match customer records in QuickBooks."),
             React.createElement("li", null, "Display sync status, history, and analytics in the Application dashboard."),
             React.createElement("li", null, "Send you notifications about sync failures or issues (if configured)."),

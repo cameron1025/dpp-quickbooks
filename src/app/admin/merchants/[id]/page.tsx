@@ -266,7 +266,7 @@ export default function AdminMerchantDetail() {
               <h2 style={{ fontSize: "15px", margin: "0 0 10px" }}>Sync history</h2>
               {data.transactions.length === 0 ? (
                 <p style={{ fontSize: "13px", color: "#888" }}>
-                  No transactions synced yet. Payments appear here once processed through DPP.
+                  No transactions synced yet. Payments appear here once processed through Deluxe.
                 </p>
               ) : (
                 <div style={{ overflowX: "auto" }}>
