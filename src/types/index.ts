@@ -165,12 +165,15 @@ export interface QBAddress {
 
 export interface QBInvoice {
   Id?: string;
+  SyncToken?: string;
   DocNumber?: string;
   TotalAmt: number;
   Balance: number;
   DueDate?: string;
   CustomerRef: { value: string; name?: string };
   Line: QBInvoiceLine[];
+  /** "Message displayed on invoice" — shows on the PDF, hosted view, and email. */
+  CustomerMemo?: { value: string };
   EmailStatus?: "NotSet" | "NeedToSend" | "EmailSent";
   BillEmail?: { Address: string };
   BillAddr?: {

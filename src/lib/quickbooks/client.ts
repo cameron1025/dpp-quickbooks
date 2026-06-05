@@ -226,6 +226,24 @@ export class QuickBooksClient {
   }
 
   /**
+   * Sparse-update an invoice's "message displayed on invoice" (CustomerMemo).
+   * Used to embed the Deluxe pay link so it appears in QB's native email / PDF /
+   * hosted invoice view. Requires the current SyncToken.
+   */
+  async updateInvoiceMemo(
+    invoiceId: string,
+    syncToken: string,
+    memo: string
+  ): Promise<{ Invoice: QBInvoice }> {
+    return this.request<{ Invoice: QBInvoice }>("POST", "invoice", {
+      Id: invoiceId,
+      SyncToken: syncToken,
+      sparse: true,
+      CustomerMemo: { value: memo },
+    });
+  }
+
+  /**
    * Fetch the invoice rendered as a PDF (uses the merchant's QB custom form
    * style / branding) and return it base64-encoded for email attachment.
    * Mirrors request()'s auto-refresh, but reads binary instead of JSON.

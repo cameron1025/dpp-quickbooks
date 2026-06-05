@@ -172,7 +172,36 @@ async function handleInvoiceCreate(
       return;
     }
 
-    // Only PaySync sends the initial email when the merchant did NOT send it
+    // Mode: 'qb_native' embeds the pay link in the QB invoice (rides QB's own
+    // email / PDF / hosted view); 'paysync' (default) sends PaySync's own email.
+    const mode = merchant.invoice_email_mode || 'paysync';
+
+    if (mode === 'qb_native') {
+      if (payNowUrl) {
+        try {
+          const existingMemo = invoice.CustomerMemo?.value || '';
+          if (existingMemo.includes('Pay online:')) {
+            console.log(`[Invoice Webhook] Invoice ${invoiceNumber} already has a pay link in its memo; skipping embed.`);
+          } else {
+            const newMemo = existingMemo
+              ? `${existingMemo}\n\nPay online: ${payNowUrl}`
+              : `Pay online: ${payNowUrl}`;
+            await qbClient.updateInvoiceMemo(invoiceId, invoice.SyncToken || '', newMemo);
+            console.log(`[Invoice Webhook] Embedded pay link in QB invoice ${invoiceNumber} (qb_native mode).`);
+          }
+        } catch (memoErr) {
+          console.error(`[Invoice Webhook] Failed to embed pay link in invoice ${invoiceId}:`, memoErr);
+        }
+      } else {
+        console.warn(`[Invoice Webhook] Invoice ${invoiceNumber} in qb_native mode but no payment link (check Deluxe credentials for MID ${merchant.dpp_merchant_id}).`);
+      }
+      // qb_native mode: PaySync does not send its own initial email — the link
+      // travels with QuickBooks' invoice. Reminders still operate as a backstop.
+      return;
+    }
+
+    // paysync mode (default) — PaySync sends the branded initial email.
+    // Only send when the merchant did NOT send it
     // from QuickBooks (EmailStatus = NotSet). If they used "Save and send",
     // QB already emailed the customer — we stay out to avoid a duplicate (the
     // Deluxe pay link still reaches them via the first reminder).
