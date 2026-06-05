@@ -6,7 +6,16 @@
 
 import { QuickBooksClient } from "./client";
 import { getValidTokens, storeTokens } from "./token-manager";
-import { DPPTransaction, QBPayment, QBPaymentLine, QBCustomer, QBInvoice } from "@/types";
+import {
+  DPPTransaction,
+  MerchantSettings,
+  QBCustomer,
+  QBInvoice,
+  QBPayment,
+  QBPaymentLine,
+  QBRefundReceipt,
+} from "@/types";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 export class PaymentSyncService {
@@ -34,8 +43,14 @@ export class PaymentSyncService {
   /**
    * Sync a DPP transaction to QuickBooks as a Payment.
    * Attempts to match against open invoices for the customer.
+   *
+   * Returns the created Payment plus `matchedCount` (number of invoices the
+   * payment was applied to). `matchedCount === 0` means a standalone payment
+   * that the caller should flag for review.
    */
-  async syncPayment(transaction: DPPTransaction): Promise<QBPayment> {
+  async syncPayment(
+    transaction: DPPTransaction
+  ): Promise<{ Payment: QBPayment; matchedCount: number }> {
     const client = await this.getClient();
 
     // 1. Find or create the customer in QuickBooks
@@ -68,7 +83,160 @@ export class PaymentSyncService {
       invoicesMatched: lines.length,
     });
 
-    return result.Payment;
+    if (lines.length === 0) {
+      logger.warn("Standalone payment created (no invoice matched) — flag for review", {
+        merchantId: this.merchantId,
+        transactionId: transaction.id,
+        qbPaymentId: result.Payment.Id,
+        amount: transaction.amount,
+      });
+    }
+
+    return { Payment: result.Payment, matchedCount: lines.length };
+  }
+
+  /**
+   * Refund a DPP transaction in QuickBooks as a RefundReceipt.
+   * Supports partial refunds (uses the transaction amount as-is).
+   */
+  async refundPayment(
+    transaction: DPPTransaction,
+    settings?: MerchantSettings | null
+  ): Promise<QBRefundReceipt> {
+    const client = await this.getClient();
+
+    // 1. Resolve the customer — prefer the one on the originally synced
+    //    payment so the refund lands on the right account; fall back to
+    //    email lookup / create.
+    const customer = await this.resolveRefundCustomer(client, transaction);
+
+    // 2. Resolve the line item (a Service item is required on a RefundReceipt).
+    const itemRef = await this.resolveRefundItem(client, settings);
+
+    // 3. Build the RefundReceipt.
+    const refund: QBRefundReceipt = {
+      CustomerRef: {
+        value: customer.Id!,
+        name: customer.DisplayName,
+      },
+      TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
+      PaymentRefNum: transaction.id.substring(0, 21),
+      PrivateNote: `DPP Gateway refund — ${transaction.payment_method} — ID: ${transaction.id}`,
+      ...(settings?.default_deposit_account && {
+        DepositToAccountRef: { value: settings.default_deposit_account },
+      }),
+      Line: [
+        {
+          Amount: transaction.amount,
+          DetailType: "SalesItemLineDetail",
+          SalesItemLineDetail: { ItemRef: itemRef },
+          Description: `Refund for transaction ${transaction.id}`,
+        },
+      ],
+    };
+
+    const result = await client.createRefundReceipt(refund);
+
+    logger.info("Refund synced to QuickBooks", {
+      merchantId: this.merchantId,
+      transactionId: transaction.id,
+      qbRefundReceiptId: result.RefundReceipt.Id,
+      amount: transaction.amount,
+    });
+
+    return result.RefundReceipt;
+  }
+
+  /**
+   * Resolve the customer for a refund. Looks up the original synced payment
+   * in sync_log → fetches its CustomerRef from QB. Falls back to email
+   * lookup / create when the original cannot be found.
+   */
+  private async resolveRefundCustomer(
+    client: QuickBooksClient,
+    transaction: DPPTransaction
+  ): Promise<QBCustomer> {
+    try {
+      const supabase = getSupabaseAdmin();
+      const { data: original } = await supabase
+        .from("sync_log")
+        .select("qb_entity_id")
+        .eq("merchant_id", this.merchantId)
+        .eq("entity_type", "Payment")
+        .eq("entity_id", transaction.id)
+        .eq("status", "success")
+        .not("qb_entity_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+
+      if (original?.qb_entity_id) {
+        const { Payment } = await client.getPayment(original.qb_entity_id);
+        if (Payment?.CustomerRef?.value) {
+          const { Customer } = await client.getCustomer(Payment.CustomerRef.value);
+          if (Customer) return Customer;
+        }
+      }
+    } catch (error) {
+      logger.warn("Could not resolve original payment customer for refund, falling back", {
+        transactionId: transaction.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return this.findOrCreateCustomer(client, transaction);
+  }
+
+  /**
+   * Resolve the QB Item used for the refund line. Uses the merchant's
+   * configured default_refund_item when set, otherwise auto-picks the first
+   * Service item in the company.
+   */
+  private async resolveRefundItem(
+    client: QuickBooksClient,
+    settings?: MerchantSettings | null
+  ): Promise<{ value: string }> {
+    if (settings?.default_refund_item) {
+      return { value: settings.default_refund_item };
+    }
+
+    const result = await client.queryItems(
+      "SELECT * FROM Item WHERE Type = 'Service' MAXRESULTS 1"
+    );
+    const item = result.QueryResponse.Item?.[0];
+
+    if (!item?.Id) {
+      throw new Error(
+        "No Service item found in QuickBooks to use on the refund receipt. " +
+          "Configure a default_refund_item in merchant settings."
+      );
+    }
+
+    return { value: item.Id };
+  }
+
+  /**
+   * Reverse a previously-synced QB Payment (used when an ACH transaction is
+   * later rejected). Deleting the payment restores any linked invoice
+   * balances. Returns the deleted QB Payment id.
+   */
+  async reversePayment(qbPaymentId: string): Promise<string> {
+    const client = await this.getClient();
+    const { Payment } = await client.getPayment(qbPaymentId);
+
+    if (!Payment?.Id || !Payment?.SyncToken) {
+      throw new Error(
+        `Cannot reverse QB payment ${qbPaymentId}: not found or missing SyncToken`
+      );
+    }
+
+    await client.deletePayment(Payment.Id, Payment.SyncToken);
+
+    logger.info("Reversed QB payment after ACH reject", {
+      merchantId: this.merchantId,
+      qbPaymentId: Payment.Id,
+    });
+
+    return Payment.Id;
   }
 
   /**
@@ -129,6 +297,20 @@ export class PaymentSyncService {
             LinkedTxn: [{ TxnId: invoiceByNumber.Id, TxnType: "Invoice" }],
           }];
         }
+
+        // Invoice number was provided but didn't match any open invoice —
+        // surface it so the round-trip can be debugged, then fall through.
+        logger.warn("DPP invoice_number did not match any open QB invoice", {
+          customerId: customer.Id,
+          dppInvoiceNumber,
+          openDocNumbers: openInvoices.map((inv) => inv.DocNumber),
+        });
+      } else {
+        logger.warn("DPP payment has no invoice_number; falling back to amount/oldest matching", {
+          customerId: customer.Id,
+          transactionId: transaction.id,
+          amount: transaction.amount,
+        });
       }
 
       // Strategy 2: Exact amount match on a single invoice

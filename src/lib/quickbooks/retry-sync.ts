@@ -16,7 +16,9 @@ const JITTER_MAX_MS = 1000;
 interface SyncLogEntry {
   id: string;
   merchant_id: string;
-  transaction_id: string;
+  entity_type: string;
+  entity_id: string;
+  qb_entity_id: string | null;
   status: string;
   retry_count: number;
   error_message: string | null;
@@ -34,13 +36,24 @@ export async function retrySyncEntry(entry: SyncLogEntry): Promise<boolean> {
   const newAttempt = entry.retry_count + 1;
 
   console.log(
-    `[RetrySync] Retrying transaction ${entry.transaction_id} ` +
+    `[RetrySync] Retrying ${entry.entity_type} ${entry.entity_id} ` +
       `(attempt ${newAttempt}/${MAX_RETRIES}) for merchant ${entry.merchant_id}`
   );
 
   try {
     const syncService = new PaymentSyncService(entry.merchant_id);
-    await syncService.syncPayment(entry.payload);
+
+    if (entry.entity_type === "Refund") {
+      // Refunds need merchant settings (deposit account / refund item).
+      const { data: merchant } = await supabase
+        .from("merchants")
+        .select("settings")
+        .eq("id", entry.merchant_id)
+        .single();
+      await syncService.refundPayment(entry.payload, merchant?.settings ?? null);
+    } else {
+      await syncService.syncPayment(entry.payload);
+    }
 
     await supabase
       .from("sync_log")
@@ -53,7 +66,7 @@ export async function retrySyncEntry(entry: SyncLogEntry): Promise<boolean> {
       .eq("id", entry.id);
 
     console.log(
-      `[RetrySync] Transaction ${entry.transaction_id} synced on attempt ${newAttempt}`
+      `[RetrySync] ${entry.entity_type} ${entry.entity_id} synced on attempt ${newAttempt}`
     );
     return true;
   } catch (error) {
@@ -72,12 +85,12 @@ export async function retrySyncEntry(entry: SyncLogEntry): Promise<boolean> {
         .eq("id", entry.id);
 
       console.error(
-        `[RetrySync] Transaction ${entry.transaction_id} permanently failed after ${MAX_RETRIES} attempts`
+        `[RetrySync] ${entry.entity_type} ${entry.entity_id} permanently failed after ${MAX_RETRIES} attempts`
       );
 
       await sendSyncFailureEmail({
         merchantId: entry.merchant_id,
-        transactionId: entry.transaction_id,
+        transactionId: entry.entity_id,
         errorMessage,
         attempts: newAttempt,
       });
@@ -96,7 +109,7 @@ export async function retrySyncEntry(entry: SyncLogEntry): Promise<boolean> {
       .eq("id", entry.id);
 
     console.warn(
-      `[RetrySync] Transaction ${entry.transaction_id} failed attempt ${newAttempt}, ` +
+      `[RetrySync] ${entry.entity_type} ${entry.entity_id} failed attempt ${newAttempt}, ` +
         `will retry in ${getBackoffDelay(newAttempt)}ms`
     );
 
