@@ -135,6 +135,36 @@ function DashboardContent() {
                 We're having trouble reaching QuickBooks right now. Syncing will resume automatically once the connection recovers.
               </p>
             )}
+
+            {/* One-time QuickBooks setup so emails come only from PaySync */}
+            <div
+              style={{
+                textAlign: "left",
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                borderRadius: "10px",
+                padding: "16px 18px",
+                marginBottom: "24px",
+              }}
+            >
+              <p style={{ fontSize: "13px", fontWeight: 600, color: "#111", margin: "0 0 8px" }}>
+                Two one-time steps in QuickBooks
+              </p>
+              <ol style={{ margin: 0, paddingLeft: "18px", color: "#555", fontSize: "13px", lineHeight: 1.6 }}>
+                <li>
+                  When saving an invoice, choose <b>“Save and close”</b> once — QuickBooks
+                  remembers it, so invoices aren't auto-emailed.
+                </li>
+                <li>
+                  Turn off QuickBooks' <b>automatic invoice reminders</b> (Settings → Sales →
+                  Reminders).
+                </li>
+              </ol>
+              <p style={{ fontSize: "12px", color: "#9ca3af", margin: "8px 0 0" }}>
+                We handle the invoice email and reminders — each with your secure pay link.
+              </p>
+            </div>
+
             <button
               onClick={handleDisconnect}
               style={{

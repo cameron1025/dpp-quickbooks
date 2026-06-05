@@ -200,6 +200,45 @@ export class QuickBooksClient {
     );
   }
 
+  /**
+   * Fetch the invoice rendered as a PDF (uses the merchant's QB custom form
+   * style / branding) and return it base64-encoded for email attachment.
+   * Mirrors request()'s auto-refresh, but reads binary instead of JSON.
+   */
+  async getInvoicePdf(invoiceId: string, retryCount = 0): Promise<string> {
+    if (isTokenExpired(this.tokens)) {
+      this.tokens = await refreshAccessToken(this.tokens.refresh_token);
+      if (this.onTokenRefresh) await this.onTokenRefresh(this.tokens);
+    }
+
+    const url = `${this.baseUrl}/v3/company/${this.tokens.realm_id}/invoice/${invoiceId}/pdf`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.tokens.access_token}`,
+        Accept: "application/pdf",
+      },
+    });
+
+    if (response.status === 401 && retryCount < 1) {
+      this.tokens = await refreshAccessToken(this.tokens.refresh_token);
+      if (this.onTokenRefresh) await this.onTokenRefresh(this.tokens);
+      return this.getInvoicePdf(invoiceId, retryCount + 1);
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new QuickBooksApiError(
+        `QB PDF ${response.status}: ${errorBody}`,
+        response.status,
+        errorBody
+      );
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer.toString("base64");
+  }
+
   async queryInvoices(
     query: string
   ): Promise<{ QueryResponse: { Invoice?: QBInvoice[] } }> {

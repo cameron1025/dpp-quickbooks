@@ -173,8 +173,24 @@ async function handleInvoiceCreate(
       return;
     }
 
-    // Send initial email if enabled
-    if (merchant.reminder_send_initial) {
+    // Only PaySync sends the initial email when the merchant did NOT send it
+    // from QuickBooks (EmailStatus = NotSet). If they used "Save and send",
+    // QB already emailed the customer — we stay out to avoid a duplicate (the
+    // Deluxe pay link still reaches them via the first reminder).
+    const sentFromQB =
+      invoice.EmailStatus === 'EmailSent' || invoice.EmailStatus === 'NeedToSend';
+
+    if (merchant.reminder_send_initial && !sentFromQB) {
+      // Attach the QB-branded invoice PDF so the email looks native.
+      // Best-effort: still send (without attachment) if the PDF fetch fails.
+      let attachment: { filename: string; content: string } | undefined;
+      try {
+        const pdfBase64 = await qbClient.getInvoicePdf(invoiceId);
+        attachment = { filename: `Invoice-${invoiceNumber}.pdf`, content: pdfBase64 };
+      } catch (pdfErr) {
+        console.warn(`[Invoice Webhook] Could not fetch PDF for invoice ${invoiceId}:`, pdfErr);
+      }
+
       await sendInvoiceEmail({
         merchantId: merchant.id,
         qbInvoiceId: invoiceId,
@@ -187,10 +203,14 @@ async function handleInvoiceCreate(
         emailType: 'initial',
         fromName: merchant.reminder_from_name || 'Billing',
         replyTo: merchant.reminder_reply_to,
+        attachment,
       });
+      console.log(`[Invoice Webhook] Tracked + emailed invoice ${invoiceNumber} to ${customerEmail}`);
+    } else if (sentFromQB) {
+      console.log(`[Invoice Webhook] Invoice ${invoiceNumber} sent from QuickBooks (EmailStatus=${invoice.EmailStatus}); tracked for reminders, skipped initial email.`);
+    } else {
+      console.log(`[Invoice Webhook] Invoice ${invoiceNumber} tracked; initial email disabled for merchant.`);
     }
-
-    console.log(`[Invoice Webhook] Tracked and emailed invoice ${invoiceNumber} to ${customerEmail}`);
   } catch (err) {
     console.error(`[Invoice Webhook] Error processing invoice create:`, err);
   }

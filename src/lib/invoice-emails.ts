@@ -28,6 +28,8 @@ interface SendInvoiceEmailParams {
   emailType: 'initial' | 'before_due' | 'due_today' | 'overdue_3' | 'overdue_7' | 'overdue_14';
   fromName?: string;
   replyTo?: string;
+  // Optional attachment (e.g. the QB-branded invoice PDF), base64-encoded.
+  attachment?: { filename: string; content: string };
 }
 
 const EMAIL_SUBJECTS: Record<string, (invoiceNumber: string) => string> = {
@@ -51,7 +53,7 @@ const EMAIL_HEADLINES: Record<string, string> = {
 export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<boolean> {
   const {
     merchantId, qbInvoiceId, invoiceNumber, customerEmail, customerName,
-    amount, dueDate, payNowUrl, emailType, fromName, replyTo,
+    amount, dueDate, payNowUrl, emailType, fromName, replyTo, attachment,
   } = params;
 
   // Check for duplicate (idempotency)
@@ -114,6 +116,7 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
         subject,
         html,
         ...(replyTo && { reply_to: replyTo }),
+        ...(attachment && { attachments: [attachment] }),
       }),
     });
 
