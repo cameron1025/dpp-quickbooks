@@ -43,6 +43,8 @@ export default function AdminDashboard() {
   const [merchants, setMerchants] = useState<MerchantRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [mid, setMid] = useState("");
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
   const [link, setLink] = useState("");
   const [linkErr, setLinkErr] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -75,6 +77,29 @@ export default function AdminDashboard() {
     const data = await res.json();
     if (res.ok) setLink(data.url);
     else setLinkErr(data.error || "Failed to generate link");
+  };
+
+  const sendInvite = async () => {
+    if (!mid.trim() || !email.trim()) return;
+    setSending(true);
+    setNotice("");
+    setLinkErr("");
+    try {
+      const res = await fetch("/api/admin/send-onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mid: mid.trim(), email: email.trim() }),
+      });
+      const data = await res.json();
+      if (data.url) setLink(data.url); // show link regardless so it can be copied
+      if (res.ok && data.sent) {
+        setNotice(`Invite sent to ${email.trim()}.`);
+      } else {
+        setLinkErr(data.error || "Failed to send invite");
+      }
+    } finally {
+      setSending(false);
+    }
   };
 
   const resubscribe = async (id: string) => {
@@ -146,7 +171,20 @@ export default function AdminDashboard() {
               onChange={(e) => setMid(e.target.value)}
               placeholder="Client's Deluxe MID"
               style={{
-                flex: "1 1 240px",
+                flex: "1 1 200px",
+                padding: "10px 12px",
+                fontSize: "14px",
+                border: "1px solid #d0d0d7",
+                borderRadius: "8px",
+              }}
+            />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Client email (optional, to send invite)"
+              style={{
+                flex: "1 1 220px",
                 padding: "10px 12px",
                 fontSize: "14px",
                 border: "1px solid #d0d0d7",
@@ -167,6 +205,23 @@ export default function AdminDashboard() {
               }}
             >
               Generate link
+            </button>
+            <button
+              type="button"
+              onClick={sendInvite}
+              disabled={sending || !mid.trim() || !email.trim()}
+              style={{
+                padding: "10px 18px",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#fff",
+                background: sending || !mid.trim() || !email.trim() ? "#9CA3AF" : "#16a34a",
+                border: "none",
+                borderRadius: "8px",
+                cursor: sending || !mid.trim() || !email.trim() ? "default" : "pointer",
+              }}
+            >
+              {sending ? "Sending…" : "Send invite email"}
             </button>
           </form>
           {linkErr && (
