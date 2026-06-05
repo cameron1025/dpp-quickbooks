@@ -253,7 +253,12 @@ export default function AdminDashboard() {
                   {merchants.map((m) => (
                     <tr key={m.id}>
                       <td style={cell}>
-                        <div style={{ fontWeight: 600 }}>{m.company_name || "—"}</div>
+                        <a
+                          href={`/admin/merchants/${m.id}`}
+                          style={{ fontWeight: 600, color: "#2563EB", textDecoration: "none" }}
+                        >
+                          {m.company_name || "—"}
+                        </a>
                         <div style={{ color: "#888", fontSize: "12px" }}>{m.email}</div>
                       </td>
                       <td style={{ ...cell, fontFamily: "monospace", fontSize: "12px" }}>
