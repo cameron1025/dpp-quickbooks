@@ -52,9 +52,20 @@ export default function AdminLoginPage() {
           maxWidth: "380px",
         }}
       >
-        <h1 style={{ fontSize: "20px", margin: "0 0 20px", color: "#1a1a1a" }}>
-          Admin sign in
-        </h1>
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <img
+            src="/logo.png"
+            alt="PaySync"
+            style={{ width: "48px", height: "48px", borderRadius: "10px" }}
+          />
+          <div style={{ fontWeight: 700, fontSize: "18px", color: "#111827", marginTop: "8px" }}>
+            PaySync
+          </div>
+          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "4px" }}>
+            by Perspective Productions
+          </div>
+          <div style={{ fontSize: "13px", color: "#6b7280" }}>Admin sign in</div>
+        </div>
         <input
           type="password"
           value={password}

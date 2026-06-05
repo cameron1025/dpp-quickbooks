@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminHeader } from "@/components/AdminHeader";
 
 interface MerchantRow {
   id: string;
@@ -130,29 +131,26 @@ export default function AdminDashboard() {
       }}
     >
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "24px",
-          }}
-        >
-          <h1 style={{ fontSize: "22px", margin: 0, color: "#1a1a1a" }}>Merchant Admin</h1>
-          <button
-            onClick={logout}
-            style={{
-              padding: "8px 14px",
-              fontSize: "13px",
-              border: "1px solid #d0d0d7",
-              background: "#fff",
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}
-          >
-            Sign out
-          </button>
-        </div>
+        <AdminHeader
+          right={
+            <button
+              onClick={logout}
+              style={{
+                padding: "8px 14px",
+                fontSize: "13px",
+                border: "1px solid #d0d0d7",
+                background: "#fff",
+                borderRadius: "8px",
+                cursor: "pointer",
+              }}
+            >
+              Sign out
+            </button>
+          }
+        />
+        <h1 style={{ fontSize: "20px", margin: "0 0 20px", color: "#1a1a1a" }}>
+          Merchant Admin
+        </h1>
 
         {/* Generate onboarding link */}
         <div

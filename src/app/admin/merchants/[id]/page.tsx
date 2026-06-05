@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { AdminHeader } from "@/components/AdminHeader";
 
 interface SyncLogEntry {
   id: string;
@@ -145,9 +146,13 @@ export default function AdminMerchantDetail() {
       }}
     >
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        <a href="/admin" style={{ fontSize: "13px", color: "#2563EB", textDecoration: "none" }}>
-          ← Back to all merchants
-        </a>
+        <AdminHeader
+          right={
+            <a href="/admin" style={{ fontSize: "13px", color: "#2563EB", textDecoration: "none" }}>
+              ← Back to all merchants
+            </a>
+          }
+        />
 
         {loading ? (
           <p style={{ fontSize: "14px", color: "#888", marginTop: "20px" }}>Loading…</p>
