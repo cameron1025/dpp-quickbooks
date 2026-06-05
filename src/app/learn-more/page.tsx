@@ -21,10 +21,10 @@ export default function LearnMorePage() {
               className="flex items-center gap-3"
             >
               <div className="w-8 h-8 bg-dpp-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">D</span>
+                <span className="text-white font-bold text-sm">P</span>
               </div>
               <span className="font-semibold text-lg text-gray-900">
-                DPP Payments
+                PaySync
               </span>
             </Link>
             <Link
@@ -42,12 +42,15 @@ export default function LearnMorePage() {
         {/* Hero */}
         <div className="text-center mb-12">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            DPP Payments for QuickBooks Online
+            PaySync for QuickBooks Online
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Automatically sync your payment gateway transactions with
-            QuickBooks Online. Save hours of manual data entry and keep
-            your books up to date in real time.
+            Sync your Deluxe payments to QuickBooks &mdash; automatically.
+            Every transaction is recorded and matched to the right invoice,
+            so your books stay current without any manual data entry.
+          </p>
+          <p className="text-sm text-gray-400 mt-4">
+            by Perspective Productions
           </p>
         </div>
 
@@ -61,7 +64,7 @@ export default function LearnMorePage() {
               {
                 title: "Automatic Payment Sync",
                 description:
-                  "Every payment processed through DPP is automatically recorded in QuickBooks as a payment receipt. No manual entry needed.",
+                  "Every payment processed through Deluxe is automatically recorded in QuickBooks as a payment. No manual entry needed.",
                 icon: "🔄",
               },
               {
@@ -71,9 +74,9 @@ export default function LearnMorePage() {
                 icon: "📋",
               },
               {
-                title: "Real-Time Reconciliation",
+                title: "Set It and Forget It",
                 description:
-                  "Transaction data flows instantly, so your books are always up to date when you need them.",
+                  "Once you connect, everything runs in the background. There's nothing to manage day to day — your books just stay up to date.",
                 icon: "⚡",
               },
             ].map((feature) => (
@@ -102,33 +105,27 @@ export default function LearnMorePage() {
             {[
               {
                 step: 1,
-                title: 'Click "Connect to QuickBooks"',
+                title: "Open your secure connection link",
                 description:
-                  'From your DPP dashboard, click the "Connect to QuickBooks" button. You\'ll be redirected to Intuit to authorize the connection.',
+                  "Your provider sends you a secure link to get started. Open it and click the “Connect to QuickBooks” button.",
               },
               {
                 step: 2,
-                title: "Authorize Access",
+                title: "Authorize access",
                 description:
-                  "Sign in to your QuickBooks Online account and authorize DPP Payments to read and create payments and invoices on your behalf.",
+                  "Sign in to your QuickBooks Online account and authorize PaySync to read and create payments and invoices on your behalf. You're redirected to Intuit to approve the connection securely.",
               },
               {
                 step: 3,
-                title: "Configure Sync Settings",
+                title: "You're done — it syncs automatically",
                 description:
-                  "Choose your preferred deposit account, income account, and sync frequency. You can adjust these anytime in Settings.",
+                  "That's it. From this point on, every payment processed through Deluxe is automatically recorded in QuickBooks and matched to the right open invoice. There's nothing else to set up.",
               },
               {
                 step: 4,
-                title: "Payments Sync Automatically",
+                title: "Review in QuickBooks anytime",
                 description:
-                  "Once connected, every payment processed through your DPP gateway is automatically recorded in QuickBooks. You can also trigger manual syncs from the dashboard.",
-              },
-              {
-                step: 5,
-                title: "Review in QuickBooks",
-                description:
-                  "Open QuickBooks Online to see your synced payments, matched invoices, and up-to-date account balances.",
+                  "Open QuickBooks Online whenever you like to see your synced payments, matched invoices, and up-to-date account balances.",
               },
             ].map((item) => (
               <li key={item.step} className="flex gap-4">
@@ -156,10 +153,10 @@ export default function LearnMorePage() {
           <div className="bg-gray-50 rounded-xl p-6 space-y-3">
             <p className="text-sm text-gray-600">
               <span className="font-medium text-gray-900">
-                From the DPP app:
+                From PaySync:
               </span>{" "}
-              Go to your dashboard and click &ldquo;Disconnect from
-              QuickBooks&rdquo;. You&apos;ll stay in the app and can
+              Open your PaySync page and click &ldquo;Disconnect
+              QuickBooks&rdquo;. You&apos;ll stay on the page and can
               reconnect at any time.
             </p>
             <p className="text-sm text-gray-600">
@@ -167,7 +164,7 @@ export default function LearnMorePage() {
                 From the QuickBooks App Store:
               </span>{" "}
               Go to Apps → My Apps in QuickBooks Online and disconnect
-              DPP Payments. This will revoke access and stop all syncing.
+              PaySync. This will revoke access and stop all syncing.
             </p>
             <p className="text-sm text-gray-500">
               In both cases, your existing data in QuickBooks is not
@@ -183,7 +180,7 @@ export default function LearnMorePage() {
           </h2>
           <div className="text-sm text-gray-600 space-y-3">
             <p>
-              DPP Payments uses OAuth 2.0 to securely connect to your
+              PaySync uses OAuth 2.0 to securely connect to your
               QuickBooks Online account. We never store your QuickBooks
               password. All access tokens are encrypted at rest using
               AES-256-GCM.
@@ -194,7 +191,7 @@ export default function LearnMorePage() {
               access payroll, tax, or employee data.
             </p>
             <p>
-              You can revoke access at any time from the DPP dashboard
+              You can revoke access at any time from your PaySync page
               or from the QuickBooks App Store.
             </p>
           </div>
@@ -210,7 +207,7 @@ export default function LearnMorePage() {
             or any questions about the integration.
           </p>
           <a
-            href="mailto:support@dpp-payments.example.com"
+            href="mailto:support@perspectiveproductions.net"
             className="
               inline-flex items-center
               px-6 py-3
