@@ -65,6 +65,17 @@ export async function getMerchantDppCredentials(mid: string): Promise<DppCredent
   return parsed;
 }
 
+/** Like getMerchantDppCredentials, but returns null instead of throwing. */
+export async function getMerchantDppCredentialsOrNull(
+  mid: string
+): Promise<DppCredentials | null> {
+  try {
+    return await getMerchantDppCredentials(mid);
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a MID has stored credentials (for admin status display). */
 export async function hasMerchantDppCredentials(mid: string): Promise<boolean> {
   const { data } = await getSupabaseAdmin()

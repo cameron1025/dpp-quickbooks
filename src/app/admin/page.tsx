@@ -365,12 +365,19 @@ export default function AdminDashboard() {
                         </a>
                         <div style={{ color: "#888", fontSize: "12px" }}>{m.email}</div>
                       </td>
-                      <td style={{ ...cell, fontSize: "12px" }}>
-                        <div style={{ fontFamily: "monospace" }}>{m.dpp_merchant_id || "—"}</div>
+                      <td style={{ ...cell, fontSize: "12px", fontFamily: "monospace" }}>
+                        {m.dpp_merchant_id || "—"}
                         {m.dpp_merchant_id && (
-                          <div style={{ marginTop: "4px" }}>
-                            <Pill ok={m.has_credentials} label={m.has_credentials ? "Creds set" : "No creds"} />
-                          </div>
+                          <span
+                            title={m.has_credentials ? "Deluxe credentials set" : "Deluxe credentials missing"}
+                            style={{
+                              marginLeft: "6px",
+                              color: m.has_credentials ? "#16a34a" : "#DC2626",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {m.has_credentials ? "✓" : "✗"}
+                          </span>
                         )}
                       </td>
                       <td style={cell}>
