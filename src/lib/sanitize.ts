@@ -129,25 +129,18 @@ export const reminderSettingsSchema = z.object({
   reminder_reply_to: z.string().email().max(254).or(z.literal("")),
 });
 
-// DPP/Deluxe gateway webhook payload. Deluxe does not sign webhooks, so
-// strict structural validation is part of our defense-in-depth (alongside
-// the URL secret + IP allowlist). passthrough() keeps the full payload so
-// transformToDPPTransaction can still read the long tail of gateway fields.
+// DPP/Deluxe gateway webhook payload. Deluxe does not sign webhooks, so this
+// structural check is defense-in-depth alongside the URL secret + IP allowlist
+// (the primary auth) — not the gatekeeper. It is intentionally lenient: the
+// Transaction and ACH Reject events carry very different field sets (verified
+// against captured payloads), so we only require the two fields present in
+// BOTH (EventType, MID) and let everything else pass through for the handler
+// to read defensively. Requiring more (e.g. TransactionAmount) would reject
+// real ACH Reject events, which instead carry `Amount`.
 export const dppWebhookPayloadSchema = z
   .object({
-    EventType: z.string().max(50).optional().default(""),
-    TransactionType: z.string().max(50).optional().default(""),
-    PaymentType: z.string().max(50).optional().default(""),
+    EventType: z.string().min(1).max(50),
     MID: z.string().min(1).max(64),
-    TransactionId: z.string().min(1).max(100),
-    DateTime: z.string().max(64).optional().default(""),
-    TransactionAmount: z.string().max(32),
-    InvoiceNumber: z.string().max(64).optional().default(""),
-    Status: z.string().max(32).optional().default(""),
-    Currency: z.string().max(8).optional().default("USD"),
-    CardType: z.string().max(32).optional().default(""),
-    CardNumber: z.string().max(40).optional().default(""),
-    AuthCode: z.string().max(32).optional().default(""),
   })
   .passthrough();
 

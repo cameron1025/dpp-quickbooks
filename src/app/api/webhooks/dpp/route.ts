@@ -20,69 +20,92 @@ import { DPPTransaction } from "@/types";
 // ── DPP Gateway Payload Types ─────────────────────────────────
 
 interface DPPCustomerInfo {
-  Name: string;
-  Address: string;
-  City: string;
-  State: string;
-  PostalCode: string;
-  Country: string;
+  Name?: string;
+  Address?: string;
+  City?: string;
+  State?: string;
+  PostalCode?: string;
+  Country?: string;
   EmailAddress?: string;
   Phone?: string;
+  CompanyName?: string;
 }
 
+// Shape of the actual webhook Deluxe POSTs (verified against captured
+// payloads). Most fields are optional because the Transaction and
+// ACH Reject events carry very different field sets. Notably:
+//   - Customer / Shipping arrive as JSON-encoded STRINGS, not objects.
+//   - ACH Reject uses `Amount` (not `TransactionAmount`) and carries
+//     OrderId / ReturnedCode / ReturnedDate / Description.
 interface DPPWebhookPayload {
   EventType: string;
-  TransactionType: string;
-  PaymentType: string;
-  AccessToken: string;
-  DbaName: string;
-  Currency: string;
   MID: string;
-  MerNo: string;
-  TerminalId: string;
-  TransactionId: string;
-  DateTime: string;
-  TransactionAmount: string;
-  InvoiceNumber: string;
-  CardType: string;
-  CardNumber: string;
-  CardExpiration: string;
-  AchAccountNumber: string;
-  AchRoutingNumber: string;
-  AchAccountType: string;
-  Discount: string;
-  ProcessingFee: string;
-  Tip: string;
-  Tax: string;
-  Surcharge: string;
-  BatchNumber: string;
-  Status: string;
-  AuthCode: string;
-  AuthResponse: string;
-  AvsResponse: string;
-  CvvResponse: string;
-  CustomerId: string;
-  RecurringId: string;
-  RecurringType: string;
-  RecurringAmount: string;
-  RecurringStartDate: string;
-  RecurringEndDate: string;
-  RecurringDayDetail: string;
-  RecurringMonthDetail: string;
-  VaultId: string;
-  VaultKey: string;
-  Customer: DPPCustomerInfo;
-  Shipping: DPPCustomerInfo;
-  Level2Data: Record<string, string>;
-  CustomFields: Array<{ Name: string; Value: string }>;
-  SubmissionMethod: string;
+  DbaName?: string;
+  // Transaction event fields
+  TransactionType?: string;
+  PaymentType?: string;
+  Currency?: string;
+  TerminalId?: string;
+  TransactionId?: string;
+  DateTime?: string;
+  TransactionAmount?: string;
+  InvoiceNumber?: string;
+  CardType?: string;
+  CardNumber?: string;
+  CardExpiration?: string;
+  AchAccountNumber?: string;
+  AchRoutingNumber?: string;
+  AchAccountType?: string;
+  Discount?: string;
+  ProcessingFee?: string;
+  Tip?: string;
+  Tax?: string;
+  Surcharge?: string;
+  BatchNumber?: string;
+  Status?: string;
+  AuthCode?: string;
+  AuthResponse?: string;
+  CustomerId?: string;
+  Customer?: string | DPPCustomerInfo;
+  Shipping?: string | DPPCustomerInfo;
+  SubmissionMethod?: string;
+  // ACH Reject event fields
+  OrderId?: string;
+  Type?: string;
+  ReturnedDate?: string;
+  ReturnedCode?: string;
+  Description?: string;
+  Amount?: string;
+}
+
+// Customer/Shipping come over the wire as JSON strings — parse defensively.
+function parseCustomerInfo(value: unknown): DPPCustomerInfo {
+  if (!value) return {};
+  if (typeof value === "object") return value as DPPCustomerInfo;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" && parsed ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function isAchReject(payload: DPPWebhookPayload): boolean {
+  return (payload.EventType || "").toUpperCase() === "ACH REJECT";
 }
 
 // ── Transform DPP payload → our DPPTransaction type ──────────
 
 function transformToDPPTransaction(payload: DPPWebhookPayload): DPPTransaction {
+  const achReject = isAchReject(payload);
+
   let status: DPPTransaction["status"];
-  if (payload.Status === "APPROVED") {
+  if (achReject) {
+    status = "failed";
+  } else if (payload.Status === "APPROVED") {
     status = "completed";
   } else if (payload.Status === "DECLINED" || payload.Status === "ERROR") {
     status = "failed";
@@ -92,43 +115,65 @@ function transformToDPPTransaction(payload: DPPWebhookPayload): DPPTransaction {
     status = "pending";
   }
 
+  const paymentType = payload.PaymentType || "";
   let paymentMethod: string;
-  if (payload.PaymentType === "CREDITCARD") {
-    paymentMethod = `credit_card_${payload.CardType.toLowerCase()}`;
-  } else if (payload.PaymentType === "ACH") {
+  if (paymentType === "CREDITCARD") {
+    paymentMethod = `credit_card_${(payload.CardType || "").toLowerCase()}`;
+  } else if (paymentType === "ACH" || achReject) {
     paymentMethod = "ach";
   } else {
-    paymentMethod = payload.PaymentType.toLowerCase();
+    paymentMethod = paymentType.toLowerCase() || "unknown";
   }
 
-  const customerEmail =
-    payload.Shipping?.EmailAddress || `customer_${payload.CustomerId}@dpp-placeholder.com`;
+  const customer = parseCustomerInfo(payload.Customer);
+  const shipping = parseCustomerInfo(payload.Shipping);
 
-  const customerName =
-    payload.Customer?.Name || payload.Shipping?.Name || "Unknown Customer";
+  const customerEmail =
+    customer.EmailAddress ||
+    shipping.EmailAddress ||
+    (payload.CustomerId
+      ? `customer_${payload.CustomerId}@dpp-placeholder.com`
+      : undefined);
+
+  const customerName = customer.Name || shipping.Name || undefined;
+
+  // ACH Reject uses `Amount`; transactions use `TransactionAmount`.
+  const amount = parseFloat(payload.TransactionAmount || payload.Amount || "0") || 0;
+
+  const rawDate = payload.DateTime || payload.ReturnedDate || "";
+  const parsedDate = rawDate ? new Date(rawDate) : null;
+  const createdAt =
+    parsedDate && !isNaN(parsedDate.getTime())
+      ? parsedDate.toISOString()
+      : new Date().toISOString();
+
+  const cardNumber = payload.CardNumber || "";
 
   return {
-    id: payload.TransactionId,
+    id: payload.TransactionId || payload.OrderId || "",
     merchant_id: payload.MID,
-    amount: parseFloat(payload.TransactionAmount),
-    currency: payload.Currency,
+    amount,
+    currency: payload.Currency || "USD",
     status,
     customer_email: customerEmail,
     customer_name: customerName,
     payment_method: paymentMethod,
-    created_at: new Date(payload.DateTime).toISOString(),
+    created_at: createdAt,
     metadata: {
-      invoice_number: payload.InvoiceNumber,
-      auth_code: payload.AuthCode,
-      card_type: payload.CardType,
-      card_last_four: payload.CardNumber.replace(/\*/g, "").slice(-4),
-      batch_number: payload.BatchNumber,
-      terminal_id: payload.TerminalId,
-      tip: payload.Tip,
-      tax: payload.Tax,
-      surcharge: payload.Surcharge,
-      dba_name: payload.DbaName,
-      submission_method: payload.SubmissionMethod,
+      invoice_number: payload.InvoiceNumber || "",
+      order_id: payload.OrderId || "",
+      auth_code: payload.AuthCode || "",
+      card_type: payload.CardType || "",
+      card_last_four: cardNumber.replace(/\*/g, "").slice(-4),
+      batch_number: payload.BatchNumber || "",
+      terminal_id: payload.TerminalId || "",
+      tip: payload.Tip || "",
+      tax: payload.Tax || "",
+      surcharge: payload.Surcharge || "",
+      dba_name: payload.DbaName || "",
+      submission_method: payload.SubmissionMethod || "",
+      returned_code: payload.ReturnedCode || "",
+      returned_description: payload.Description || "",
     },
   };
 }
@@ -144,12 +189,21 @@ type DPPEventType =
 function getEventType(payload: DPPWebhookPayload): DPPEventType {
   // ACH returns/rejects arrive after settlement — a previously synced
   // payment must be reversed. Deluxe flags these via EventType.
-  if ((payload.EventType || "").toUpperCase() === "ACH REJECT") {
-    return "payment.ach_rejected";
-  }
+  if (isAchReject(payload)) return "payment.ach_rejected";
   if (payload.TransactionType === "REFUND") return "payment.refunded";
   if (payload.Status === "APPROVED") return "payment.completed";
   return "payment.failed";
+}
+
+// Build the idempotency key. An ACH Reject typically carries the SAME
+// TransactionId as the original payment, so it must be namespaced to avoid
+// being skipped as a duplicate of the original payment's webhook.
+function buildEventId(payload: DPPWebhookPayload, eventType: DPPEventType): string {
+  const base = payload.TransactionId || payload.OrderId || "";
+  if (eventType === "payment.ach_rejected") {
+    return `ach_reject:${base}:${payload.ReturnedDate || payload.ReturnedCode || ""}`;
+  }
+  return base;
 }
 
 // ── Main Handler ──────────────────────────────────────────────
@@ -205,14 +259,16 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = validation.data as unknown as DPPWebhookPayload;
-  const eventId = payload.TransactionId;
+  const eventType = getEventType(payload);
+  const eventId = buildEventId(payload, eventType);
 
   logger.info("DPP webhook received", {
     eventId,
     eventType: payload.EventType,
+    resolvedEvent: eventType,
     transactionType: payload.TransactionType,
     status: payload.Status,
-    amount: payload.TransactionAmount,
+    amount: payload.TransactionAmount || payload.Amount,
     mid: payload.MID,
   });
 
@@ -231,8 +287,6 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Store the event ────────────────────────────────────────
-  const eventType = getEventType(payload);
-
   await supabase.from("webhook_events").insert({
     event_id: eventId,
     source: "dpp",
@@ -480,11 +534,12 @@ async function findOriginalSyncedPayment(
   transaction: DPPTransaction,
   payload: DPPWebhookPayload
 ): Promise<{ qb_entity_id: string } | null> {
-  const anyPayload = payload as unknown as Record<string, unknown>;
+  // The reject references the original transaction via TransactionId and/or
+  // OrderId (verified against captured ACH Reject payloads). The original
+  // payment was synced with sync_log.entity_id = its TransactionId/OrderId.
   const candidates = [
-    anyPayload.OriginalTransactionId,
-    anyPayload.RefTransactionId,
-    anyPayload.ReferenceTransactionId,
+    payload.TransactionId,
+    payload.OrderId,
     transaction.id,
   ].filter((v): v is string => typeof v === "string" && v.length > 0);
 
