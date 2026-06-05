@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getValidTokens, PaymentSyncService } from "@/lib/quickbooks";
 import { isValidAdminCookie, ADMIN_COOKIE_NAME } from "@/lib/admin-auth";
+import { hasMerchantDppCredentials } from "@/lib/dpp/credentials";
 import { logger } from "@/lib/logger";
 
 export async function GET(
@@ -91,6 +92,10 @@ export async function GET(
     reminder_reply_to: merchant.reminder_reply_to ?? null,
   };
 
+  const hasCredentials = merchant.dpp_merchant_id
+    ? await hasMerchantDppCredentials(merchant.dpp_merchant_id)
+    : false;
+
   return NextResponse.json({
     merchant: {
       id: merchant.id,
@@ -106,6 +111,7 @@ export async function GET(
       dpp_subscription_ids: merchant.dpp_subscription_ids,
     },
     subscribed: !!merchant.dpp_subscribed_at,
+    hasCredentials,
     connectionHealth,
     settings: merchant.settings || {},
     reminderSettings,

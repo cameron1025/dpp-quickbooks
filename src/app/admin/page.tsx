@@ -10,6 +10,7 @@ interface MerchantRow {
   dpp_merchant_id: string | null;
   qb_connected: boolean;
   subscribed: boolean;
+  has_credentials: boolean;
   status: string;
   last_sync: { status: string; created_at: string } | null;
 }
@@ -45,6 +46,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [mid, setMid] = useState("");
   const [email, setEmail] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [partnerToken, setPartnerToken] = useState("");
   const [sending, setSending] = useState(false);
   const [link, setLink] = useState("");
   const [linkErr, setLinkErr] = useState("");
@@ -70,14 +74,40 @@ export default function AdminDashboard() {
     load();
   }, [load]);
 
+  // Save the client's Deluxe credentials if all three fields are provided.
+  // Returns "saved" | "incomplete" (none/partial) | "error".
+  const saveCredentials = async (): Promise<"saved" | "incomplete" | "error"> => {
+    const id = clientId.trim(), secret = clientSecret.trim(), token = partnerToken.trim();
+    if (!id && !secret && !token) return "incomplete";
+    if (!id || !secret || !token) return "incomplete"; // partial = treat as not saved
+    const res = await fetch("/api/admin/dpp-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mid: mid.trim(), clientId: id, clientSecret: secret, partnerToken: token }),
+    });
+    return res.ok ? "saved" : "error";
+  };
+
+  const credsNote = (r: "saved" | "incomplete" | "error") =>
+    r === "saved"
+      ? " Deluxe credentials saved."
+      : " ⚠ Add this client's Deluxe credentials (all 3 fields) so their payments sync.";
+
   const generate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLink("");
     setLinkErr("");
+    setNotice("");
+    const cred = await saveCredentials();
+    if (cred === "error") { setLinkErr("Failed to save Deluxe credentials"); return; }
     const res = await fetch(`/api/admin/onboard-link?mid=${encodeURIComponent(mid.trim())}`);
     const data = await res.json();
-    if (res.ok) setLink(data.url);
-    else setLinkErr(data.error || "Failed to generate link");
+    if (res.ok) {
+      setLink(data.url);
+      setNotice(`Link generated.${credsNote(cred)}`);
+    } else {
+      setLinkErr(data.error || "Failed to generate link");
+    }
   };
 
   const sendInvite = async () => {
@@ -86,6 +116,8 @@ export default function AdminDashboard() {
     setNotice("");
     setLinkErr("");
     try {
+      const cred = await saveCredentials();
+      if (cred === "error") { setLinkErr("Failed to save Deluxe credentials"); return; }
       const res = await fetch("/api/admin/send-onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,7 +126,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (data.url) setLink(data.url); // show link regardless so it can be copied
       if (res.ok && data.sent) {
-        setNotice(`Invite sent to ${email.trim()}.`);
+        setNotice(`Invite sent to ${email.trim()}.${credsNote(cred)}`);
       } else {
         setLinkErr(data.error || "Failed to send invite");
       }
@@ -188,6 +220,25 @@ export default function AdminDashboard() {
                 border: "1px solid #d0d0d7",
                 borderRadius: "8px",
               }}
+            />
+            <input
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="Deluxe Client ID"
+              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
+            />
+            <input
+              type="password"
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder="Deluxe Client Secret"
+              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
+            />
+            <input
+              value={partnerToken}
+              onChange={(e) => setPartnerToken(e.target.value)}
+              placeholder="Deluxe Partner Token"
+              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
             />
             <button
               type="submit"
@@ -314,8 +365,13 @@ export default function AdminDashboard() {
                         </a>
                         <div style={{ color: "#888", fontSize: "12px" }}>{m.email}</div>
                       </td>
-                      <td style={{ ...cell, fontFamily: "monospace", fontSize: "12px" }}>
-                        {m.dpp_merchant_id || "—"}
+                      <td style={{ ...cell, fontSize: "12px" }}>
+                        <div style={{ fontFamily: "monospace" }}>{m.dpp_merchant_id || "—"}</div>
+                        {m.dpp_merchant_id && (
+                          <div style={{ marginTop: "4px" }}>
+                            <Pill ok={m.has_credentials} label={m.has_credentials ? "Creds set" : "No creds"} />
+                          </div>
+                        )}
                       </td>
                       <td style={cell}>
                         <Pill ok={m.qb_connected} label={m.qb_connected ? "Connected" : "Not connected"} />

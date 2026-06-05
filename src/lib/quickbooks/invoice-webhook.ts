@@ -13,8 +13,8 @@ import { createClient } from '@supabase/supabase-js';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
-import { generatePayNowUrl } from '@/lib/pay-now-url';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
+import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -129,40 +129,23 @@ async function handleInvoiceCreate(
     const balanceDue = invoice.Balance;
     const dueDate = invoice.DueDate || null;
 
-    // Extract billing address from QB invoice (if present)
-    const billAddr = invoice.BillAddr || {};
-    const customerPhone = invoice.PrimaryPhone?.FreeFormNumber;
-
-    // Prefer a Deluxe payment link (guarantees Card + ACH and locks the amount
-    // to the balance). Fall back to the static Online Form if the API fails.
-    let payNowUrl: string;
+    // Create a payment link under the CLIENT's own Deluxe account (guarantees
+    // Card + ACH, locks the amount). If their credentials are missing or the
+    // API fails, we do NOT send a misrouted link — skip and surface it
+    // (reminders will retry once credentials/API are healthy).
+    let payNowUrl: string | null = null;
     try {
-      const link = await createInvoicePaymentLink({
-        invoiceNumber,
-        amount: balanceDue,
-        customerName,
-      });
+      const creds = await getMerchantDppCredentials(merchant.dpp_merchant_id);
+      const link = await createInvoicePaymentLink(
+        { invoiceNumber, amount: balanceDue, customerName },
+        creds
+      );
       payNowUrl = link.url;
     } catch (linkErr) {
-      console.warn(
-        `[Invoice Webhook] Payment link API failed for invoice ${invoiceId}; falling back to static form:`,
+      console.error(
+        `[Invoice Webhook] Could not create payment link for invoice ${invoiceId} (MID ${merchant.dpp_merchant_id}):`,
         linkErr
       );
-      payNowUrl = generatePayNowUrl({
-        merchantId: merchant.dpp_merchant_id,
-        invoiceNumber,
-        amount: balanceDue,
-        customerEmail,
-        customerName,
-        customerPhone,
-        billingAddress: {
-          address: billAddr.Line1,
-          city: billAddr.City,
-          state: billAddr.CountrySubDivisionCode,
-          zip: billAddr.PostalCode,
-          country: billAddr.Country || 'US',
-        },
-      });
     }
 
     // Upsert into tracked_invoices
@@ -196,7 +179,7 @@ async function handleInvoiceCreate(
     const sentFromQB =
       invoice.EmailStatus === 'EmailSent' || invoice.EmailStatus === 'NeedToSend';
 
-    if (merchant.reminder_send_initial && !sentFromQB) {
+    if (merchant.reminder_send_initial && !sentFromQB && payNowUrl) {
       // Attach the QB-branded invoice PDF so the email looks native.
       // Best-effort: still send (without attachment) if the PDF fetch fails.
       let attachment: { filename: string; content: string } | undefined;
@@ -224,6 +207,8 @@ async function handleInvoiceCreate(
       console.log(`[Invoice Webhook] Tracked + emailed invoice ${invoiceNumber} to ${customerEmail}`);
     } else if (sentFromQB) {
       console.log(`[Invoice Webhook] Invoice ${invoiceNumber} sent from QuickBooks (EmailStatus=${invoice.EmailStatus}); tracked for reminders, skipped initial email.`);
+    } else if (merchant.reminder_send_initial && !payNowUrl) {
+      console.warn(`[Invoice Webhook] Invoice ${invoiceNumber} tracked but no payment link (check Deluxe credentials for MID ${merchant.dpp_merchant_id}); initial email skipped — reminders will retry.`);
     } else {
       console.log(`[Invoice Webhook] Invoice ${invoiceNumber} tracked; initial email disabled for merchant.`);
     }

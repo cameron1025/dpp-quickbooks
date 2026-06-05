@@ -28,6 +28,7 @@ interface Details {
     dpp_subscribed_at: string | null;
   };
   subscribed: boolean;
+  hasCredentials: boolean;
   connectionHealth: "healthy" | "degraded" | "disconnected";
   settings: Record<string, unknown>;
   reminderSettings: Record<string, unknown>;
@@ -95,6 +96,10 @@ export default function AdminMerchantDetail() {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [cId, setCId] = useState("");
+  const [cSecret, setCSecret] = useState("");
+  const [pToken, setPToken] = useState("");
+  const [savingCreds, setSavingCreds] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -133,6 +138,38 @@ export default function AdminMerchantDetail() {
       await load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  const saveCreds = async () => {
+    if (!data?.merchant.dpp_merchant_id) return;
+    if (!cId.trim() || !cSecret.trim() || !pToken.trim()) {
+      setNotice("All three credential fields are required.");
+      return;
+    }
+    setSavingCreds(true);
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/dpp-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mid: data.merchant.dpp_merchant_id,
+          clientId: cId.trim(),
+          clientSecret: cSecret.trim(),
+          partnerToken: pToken.trim(),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      setNotice(res.ok ? "Deluxe credentials saved." : `Failed: ${body.error || res.status}`);
+      if (res.ok) {
+        setCId("");
+        setCSecret("");
+        setPToken("");
+        await load();
+      }
+    } finally {
+      setSavingCreds(false);
     }
   };
 
@@ -223,6 +260,56 @@ export default function AdminMerchantDetail() {
                   Connected {new Date(data.merchant.qb_connected_at).toLocaleString()}
                 </p>
               )}
+            </div>
+
+            {/* Deluxe credentials */}
+            <div style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <h2 style={{ fontSize: "15px", margin: 0 }}>Deluxe credentials</h2>
+                <Pill ok={data.hasCredentials} label={data.hasCredentials ? "Configured" : "Not configured"} />
+              </div>
+              <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
+                {data.hasCredentials
+                  ? "Stored and encrypted. Enter new values to replace them."
+                  : "Required — this client's webhooks and payment links use their own Deluxe account."}
+              </p>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <input
+                  value={cId}
+                  onChange={(e) => setCId(e.target.value)}
+                  placeholder="Client ID"
+                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
+                />
+                <input
+                  type="password"
+                  value={cSecret}
+                  onChange={(e) => setCSecret(e.target.value)}
+                  placeholder="Client Secret"
+                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
+                />
+                <input
+                  value={pToken}
+                  onChange={(e) => setPToken(e.target.value)}
+                  placeholder="Partner Token"
+                  style={{ flex: "1 1 170px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
+                />
+                <button
+                  onClick={saveCreds}
+                  disabled={savingCreds}
+                  style={{
+                    padding: "10px 18px",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#fff",
+                    background: savingCreds ? "#9CA3AF" : "#16a34a",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: savingCreds ? "default" : "pointer",
+                  }}
+                >
+                  {savingCreds ? "Saving…" : "Save credentials"}
+                </button>
+              </div>
             </div>
 
             {/* Stats */}
