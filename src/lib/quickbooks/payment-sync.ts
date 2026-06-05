@@ -14,9 +14,19 @@ import {
   QBPayment,
   QBPaymentLine,
   QBRefundReceipt,
+  QBSalesReceipt,
 } from "@/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+
+/**
+ * Result of syncing a DPP transaction to QuickBooks:
+ * - `payment`: applied to one or more open invoices (matchedCount > 0)
+ * - `sales_receipt`: no invoice matched, recorded as a sale (e.g. terminal swipe)
+ */
+export type SyncPaymentResult =
+  | { kind: "payment"; id: string; matchedCount: number }
+  | { kind: "sales_receipt"; id: string };
 
 export class PaymentSyncService {
   private merchantId: string;
@@ -41,58 +51,102 @@ export class PaymentSyncService {
   }
 
   /**
-   * Sync a DPP transaction to QuickBooks as a Payment.
-   * Attempts to match against open invoices for the customer.
+   * Sync a DPP transaction to QuickBooks.
    *
-   * Returns the created Payment plus `matchedCount` (number of invoices the
-   * payment was applied to). `matchedCount === 0` means a standalone payment
-   * that the caller should flag for review.
+   * - If it matches an open invoice → records a Payment applied to that invoice.
+   * - If it doesn't (in-person terminal swipe, walk-in sale, or any unmatched
+   *   payment) → records a Sales Receipt so the sale posts to income instead of
+   *   sitting as an unapplied credit.
    */
   async syncPayment(
-    transaction: DPPTransaction
-  ): Promise<{ Payment: QBPayment; matchedCount: number }> {
+    transaction: DPPTransaction,
+    settings?: MerchantSettings | null
+  ): Promise<SyncPaymentResult> {
     const client = await this.getClient();
 
-    // 1. Find or create the customer in QuickBooks
-    const customer = await this.findOrCreateCustomer(client, transaction);
+    // Resolve the customer: use the transaction's customer when present,
+    // otherwise the shared "Walk-in Customer" (anonymous in-person swipes).
+    const hasCustomerInfo = !!(transaction.customer_email || transaction.customer_name);
+    const customer = hasCustomerInfo
+      ? await this.findOrCreateCustomer(client, transaction)
+      : await this.findOrCreateWalkInCustomer(client);
 
-    // 2. Try to match open invoices for this customer
-    const lines = await this.matchInvoices(client, customer, transaction);
+    // A terminal swipe with no invoice number is a point-of-sale sale — record
+    // it as a sale rather than risk a false amount-match to an unrelated invoice.
+    const terminalWalkIn =
+      !!transaction.metadata?.terminal_id && !transaction.metadata?.invoice_number;
 
-    // 3. Build the QB Payment object
-    const payment: QBPayment = {
-      TotalAmt: transaction.amount,
-      CustomerRef: {
-        value: customer.Id!,
-        name: customer.DisplayName,
-      },
-      PaymentRefNum: transaction.id.substring(0, 21),
-      TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
-      PrivateNote: `DPP Gateway payment — ${transaction.payment_method} — ID: ${transaction.id}`,
-      Line: lines,
-    };
+    const lines = terminalWalkIn
+      ? []
+      : await this.matchInvoices(client, customer, transaction);
 
-    // 4. Create the payment in QuickBooks
-    const result = await client.createPayment(payment);
-
-    logger.info("Payment synced to QuickBooks", {
-      merchantId: this.merchantId,
-      transactionId: transaction.id,
-      qbPaymentId: result.Payment.Id,
-      amount: transaction.amount,
-      invoicesMatched: lines.length,
-    });
-
-    if (lines.length === 0) {
-      logger.warn("Standalone payment created (no invoice matched) — flag for review", {
+    // Matched an invoice → Payment applied to it.
+    if (lines.length > 0) {
+      const payment: QBPayment = {
+        TotalAmt: transaction.amount,
+        CustomerRef: { value: customer.Id!, name: customer.DisplayName },
+        PaymentRefNum: transaction.id.substring(0, 21),
+        TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
+        PrivateNote: `DPP Gateway payment — ${transaction.payment_method} — ID: ${transaction.id}`,
+        Line: lines,
+      };
+      const result = await client.createPayment(payment);
+      logger.info("Payment synced to QuickBooks", {
         merchantId: this.merchantId,
         transactionId: transaction.id,
         qbPaymentId: result.Payment.Id,
         amount: transaction.amount,
+        invoicesMatched: lines.length,
       });
+      return { kind: "payment", id: result.Payment.Id!, matchedCount: lines.length };
     }
 
-    return { Payment: result.Payment, matchedCount: lines.length };
+    // No invoice matched → record a Sales Receipt (sale + payment → income).
+    const receipt = await this.recordSale(client, transaction, customer, settings);
+    return { kind: "sales_receipt", id: receipt.Id! };
+  }
+
+  /**
+   * Record an invoice-less payment as a QuickBooks Sales Receipt — a sale +
+   * payment in one entry, posting to income + the deposit account. Used for
+   * in-person terminal swipes and any payment with no matching invoice.
+   */
+  private async recordSale(
+    client: QuickBooksClient,
+    transaction: DPPTransaction,
+    customer: QBCustomer,
+    settings?: MerchantSettings | null
+  ): Promise<QBSalesReceipt> {
+    const itemRef = await this.resolveSalesItem(client, settings);
+    const isTerminal = !!transaction.metadata?.terminal_id;
+
+    const receipt: QBSalesReceipt = {
+      CustomerRef: { value: customer.Id!, name: customer.DisplayName },
+      TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
+      PaymentRefNum: transaction.id.substring(0, 21),
+      PrivateNote: `DPP ${isTerminal ? "terminal " : ""}sale — ${transaction.payment_method} — ID: ${transaction.id}`,
+      ...(settings?.default_deposit_account && {
+        DepositToAccountRef: { value: settings.default_deposit_account },
+      }),
+      Line: [
+        {
+          Amount: transaction.amount,
+          DetailType: "SalesItemLineDetail",
+          SalesItemLineDetail: { ItemRef: itemRef },
+          Description: `Payment received via DPP${isTerminal ? " terminal" : ""} — ${transaction.payment_method}`,
+        },
+      ],
+    };
+
+    const result = await client.createSalesReceipt(receipt);
+    logger.info("Sale recorded in QuickBooks (no invoice matched)", {
+      merchantId: this.merchantId,
+      transactionId: transaction.id,
+      qbSalesReceiptId: result.SalesReceipt.Id,
+      amount: transaction.amount,
+      terminal: isTerminal,
+    });
+    return result.SalesReceipt;
   }
 
   /**
@@ -212,6 +266,50 @@ export class PaymentSyncService {
     }
 
     return { value: item.Id };
+  }
+
+  /**
+   * Resolve the QB Item used on a sales-receipt line. Prefers the merchant's
+   * default_sales_item, then default_refund_item, else the first Service item.
+   */
+  private async resolveSalesItem(
+    client: QuickBooksClient,
+    settings?: MerchantSettings | null
+  ): Promise<{ value: string }> {
+    if (settings?.default_sales_item) return { value: settings.default_sales_item };
+    if (settings?.default_refund_item) return { value: settings.default_refund_item };
+
+    const result = await client.queryItems(
+      "SELECT * FROM Item WHERE Type = 'Service' MAXRESULTS 1"
+    );
+    const item = result.QueryResponse.Item?.[0];
+    if (!item?.Id) {
+      throw new Error(
+        "No Service item found in QuickBooks to use on the sales receipt. " +
+          "Configure a default_sales_item in merchant settings."
+      );
+    }
+    return { value: item.Id };
+  }
+
+  /**
+   * Find or create the shared "Walk-in Customer" used for anonymous in-person
+   * swipes that carry no customer details.
+   */
+  private async findOrCreateWalkInCustomer(
+    client: QuickBooksClient
+  ): Promise<QBCustomer> {
+    const name = "Walk-in Customer";
+    try {
+      const existing = await client.findCustomerByName(name);
+      if (existing) return existing;
+    } catch (error) {
+      logger.warn("Walk-in customer lookup failed, creating a new one", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const result = await client.createCustomer({ DisplayName: name });
+    return result.Customer;
   }
 
   /**

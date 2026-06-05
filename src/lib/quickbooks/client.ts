@@ -10,6 +10,7 @@ import {
   QBItem,
   QBPayment,
   QBRefundReceipt,
+  QBSalesReceipt,
   QBTokens,
 } from "@/types";
 import { refreshAccessToken, isTokenExpired } from "./oauth";
@@ -150,6 +151,20 @@ export class QuickBooksClient {
     );
   }
 
+  /**
+   * Create a Sales Receipt — records a sale + payment in one entry for
+   * payments with no matching invoice (e.g. in-person terminal swipes).
+   */
+  async createSalesReceipt(
+    receipt: QBSalesReceipt
+  ): Promise<{ SalesReceipt: QBSalesReceipt }> {
+    return this.request<{ SalesReceipt: QBSalesReceipt }>(
+      "POST",
+      "salesreceipt",
+      receipt
+    );
+  }
+
   // ── Items (for refund line items) ─────────────────────────
 
   async queryItems(
@@ -175,6 +190,16 @@ export class QuickBooksClient {
     email: string
   ): Promise<QBCustomer | null> {
     const query = `SELECT * FROM Customer WHERE PrimaryEmailAddr = '${email}' MAXRESULTS 1`;
+    const result = await this.queryPayments(query);
+    const customers = (result.QueryResponse as any).Customer;
+    return customers?.[0] || null;
+  }
+
+  async findCustomerByName(
+    name: string
+  ): Promise<QBCustomer | null> {
+    const escaped = name.replace(/'/g, "\\'");
+    const query = `SELECT * FROM Customer WHERE DisplayName = '${escaped}' MAXRESULTS 1`;
     const result = await this.queryPayments(query);
     const customers = (result.QueryResponse as any).Customer;
     return customers?.[0] || null;

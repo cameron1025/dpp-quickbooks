@@ -43,16 +43,18 @@ export async function retrySyncEntry(entry: SyncLogEntry): Promise<boolean> {
   try {
     const syncService = new PaymentSyncService(entry.merchant_id);
 
+    // Settings are needed for refunds (deposit account / refund item) and for
+    // invoice-less payments recorded as sales receipts (deposit account / item).
+    const { data: merchant } = await supabase
+      .from("merchants")
+      .select("settings")
+      .eq("id", entry.merchant_id)
+      .single();
+
     if (entry.entity_type === "Refund") {
-      // Refunds need merchant settings (deposit account / refund item).
-      const { data: merchant } = await supabase
-        .from("merchants")
-        .select("settings")
-        .eq("id", entry.merchant_id)
-        .single();
       await syncService.refundPayment(entry.payload, merchant?.settings ?? null);
     } else {
-      await syncService.syncPayment(entry.payload);
+      await syncService.syncPayment(entry.payload, merchant?.settings ?? null);
     }
 
     await supabase

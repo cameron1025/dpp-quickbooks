@@ -111,6 +111,7 @@ export const merchantSettingsSchema = z.object({
   default_deposit_account: z.string().optional(),
   default_income_account: z.string().optional(),
   default_refund_item: z.string().optional(),
+  default_sales_item: z.string().optional(),
   webhook_url: z.string().url().optional().or(z.literal("")),
 });
 

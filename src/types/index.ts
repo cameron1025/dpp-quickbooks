@@ -28,6 +28,8 @@ export interface MerchantSettings {
   default_income_account?: string;
   /** QB Item (Type=Service) used as the line item on refund receipts. Auto-picked if unset. */
   default_refund_item?: string;
+  /** QB Item (Type=Service) used as the line item on sales receipts (invoice-less payments). Auto-picked if unset. */
+  default_sales_item?: string;
   webhook_url?: string;
 }
 
@@ -97,6 +99,25 @@ export interface QBRefundReceiptLine {
 }
 
 export interface QBRefundReceipt {
+  Id?: string;
+  SyncToken?: string;
+  CustomerRef: { value: string; name?: string };
+  TotalAmt?: number;
+  TxnDate?: string;
+  PaymentMethodRef?: { value: string };
+  DepositToAccountRef?: { value: string };
+  PrivateNote?: string;
+  PaymentRefNum?: string;
+  Line: QBRefundReceiptLine[];
+}
+
+/**
+ * Sales Receipt — records a sale + payment in one entry (posts to income +
+ * deposit account), used for payments that don't match an invoice (e.g.
+ * in-person terminal swipes / walk-in sales). Shares the line shape with
+ * RefundReceipt.
+ */
+export interface QBSalesReceipt {
   Id?: string;
   SyncToken?: string;
   CustomerRef: { value: string; name?: string };

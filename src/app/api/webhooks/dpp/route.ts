@@ -340,30 +340,34 @@ async function processEvent(
     switch (eventType) {
       case "payment.completed": {
         const syncService = new PaymentSyncService(merchant.id);
-        const { Payment: qbPayment, matchedCount } =
-          await syncService.syncPayment(transaction);
+        const syncResult = await syncService.syncPayment(
+          transaction,
+          merchant.settings
+        );
 
+        const isSale = syncResult.kind === "sales_receipt";
         await supabase.from("sync_log").insert({
           merchant_id: merchant.id,
           direction: "dpp_to_qb",
-          entity_type: "Payment",
+          entity_type: isSale ? "SalesReceipt" : "Payment",
           entity_id: transaction.id,
-          qb_entity_id: qbPayment.Id,
+          qb_entity_id: syncResult.id,
           status: "success",
           payload: transaction,
-          metadata: {
-            invoices_matched: matchedCount,
-            standalone: matchedCount === 0,
-            needs_review: matchedCount === 0,
-          },
+          metadata: isSale
+            ? { recorded_as: "sales_receipt", no_invoice: true }
+            : {
+                invoices_matched: syncResult.matchedCount,
+                standalone: false,
+              },
         });
 
         await markEvent(supabase, eventId, true);
         logger.info("DPP payment synced to QB", {
           transactionId: transaction.id,
-          qbPaymentId: qbPayment.Id,
+          qbEntityId: syncResult.id,
+          recordedAs: syncResult.kind,
           amount: transaction.amount,
-          invoicesMatched: matchedCount,
         });
         break;
       }
