@@ -69,6 +69,9 @@ export async function GET(request: NextRequest) {
     let companyName = merchant.company_name;
 
     if (merchant.qb_connected) {
+      // Connected: reserve "disconnected" for a genuine disconnect. A transient
+      // live-check failure / in-flight token refresh shows "degraded".
+      connectionHealth = "degraded";
       const tokens = await getValidTokens(merchantId);
       if (tokens) {
         try {
