@@ -94,6 +94,13 @@ export async function getTokens(
 
 // ── Get Valid Tokens (auto-refresh if needed) ───────────────
 
+// In-memory single-flight: collapse concurrent refreshes for the same merchant
+// into one call. Intuit ROTATES the refresh token on every refresh, so two
+// concurrent refreshes with the same token can invalidate the stored one and
+// drop the connection (the cause of the admin "Disconnected" flapping). The
+// app runs as a single long-lived container, so a module-level map is enough.
+const refreshInFlight = new Map<string, Promise<QBTokens | null>>();
+
 export async function getValidTokens(
   merchantId: string
 ): Promise<QBTokens | null> {
@@ -107,8 +114,16 @@ export async function getValidTokens(
     return null;
   }
 
-  // If access token is expired, refresh it
-  if (isTokenExpired(tokens)) {
+  // Access token still valid — use it.
+  if (!isTokenExpired(tokens)) {
+    return tokens;
+  }
+
+  // Access token expired — refresh, but only once per merchant at a time.
+  const existing = refreshInFlight.get(merchantId);
+  if (existing) return existing;
+
+  const refreshPromise = (async (): Promise<QBTokens | null> => {
     try {
       const refreshed = await refreshAccessToken(tokens.refresh_token);
       refreshed.realm_id = tokens.realm_id;
@@ -117,10 +132,13 @@ export async function getValidTokens(
     } catch (err) {
       logger.error("Token refresh failed", { merchantId, error: err });
       return null;
+    } finally {
+      refreshInFlight.delete(merchantId);
     }
-  }
+  })();
 
-  return tokens;
+  refreshInFlight.set(merchantId, refreshPromise);
+  return refreshPromise;
 }
 
 // ── Revoke & Delete Tokens (disconnect from app) ────────────

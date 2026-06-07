@@ -31,9 +31,14 @@ export async function GET(
   }
 
   // Live connection health (best-effort — one QB API call).
+  // "disconnected" is reserved for merchants that are actually not connected.
+  // A connected merchant whose live check momentarily fails (transient QB error
+  // or a token refresh in flight) shows "degraded", not "disconnected" — this
+  // avoids false "Disconnected" flapping on every transient hiccup.
   let connectionHealth: "healthy" | "degraded" | "disconnected" = "disconnected";
   let companyName = merchant.company_name;
   if (merchant.qb_connected) {
+    connectionHealth = "degraded";
     try {
       const tokens = await getValidTokens(id);
       if (tokens) {
