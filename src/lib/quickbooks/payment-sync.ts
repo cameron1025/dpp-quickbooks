@@ -25,7 +25,7 @@ import { logger } from "@/lib/logger";
  * - `sales_receipt`: no invoice matched, recorded as a sale (e.g. terminal swipe)
  */
 export type SyncPaymentResult =
-  | { kind: "payment"; id: string; matchedCount: number }
+  | { kind: "payment"; id: string; matchedCount: number; surcharge?: number; surchargeId?: string }
   | { kind: "sales_receipt"; id: string };
 
 export class PaymentSyncService {
@@ -74,14 +74,24 @@ export class PaymentSyncService {
     const terminalWalkIn =
       !!transaction.metadata?.terminal_id && !transaction.metadata?.invoice_number;
 
+    // Card surcharge: when surcharging is enabled on the Deluxe account, Deluxe
+    // adds a fee on top, so the CHARGED total exceeds the invoice balance. Match
+    // and apply on the BASE amount (charged − surcharge) so the invoice is paid in
+    // full; the surcharge is recorded separately below so the full deposit
+    // reconciles. (ACH/debit/wallets are never surcharged → surcharge = 0.)
+    const surcharge = this.surchargeAmount(transaction);
+    const baseAmount = Math.round((transaction.amount - surcharge) * 100) / 100;
+
     const lines = terminalWalkIn
       ? []
-      : await this.matchInvoices(client, customer, transaction);
+      : await this.matchInvoices(client, customer, transaction, baseAmount);
 
-    // Matched an invoice → Payment applied to it.
+    // Matched an invoice → Payment (base amount) applied to it.
     if (lines.length > 0) {
+      const appliedTotal =
+        Math.round(lines.reduce((sum, l) => sum + (l.Amount || 0), 0) * 100) / 100;
       const payment: QBPayment = {
-        TotalAmt: transaction.amount,
+        TotalAmt: appliedTotal,
         CustomerRef: { value: customer.Id!, name: customer.DisplayName },
         PaymentRefNum: transaction.id.substring(0, 21),
         TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
@@ -93,13 +103,34 @@ export class PaymentSyncService {
         merchantId: this.merchantId,
         transactionId: transaction.id,
         qbPaymentId: result.Payment.Id,
-        amount: transaction.amount,
+        amount: appliedTotal,
         invoicesMatched: lines.length,
       });
-      return { kind: "payment", id: result.Payment.Id!, matchedCount: lines.length };
+
+      // Record the surcharge as its own sales receipt so the FULL charged amount
+      // lands in QB and the bank deposit reconciles (invoice payment + surcharge).
+      let surchargeId: string | undefined;
+      if (surcharge > 0) {
+        const sr = await this.recordSurcharge(client, transaction, customer, settings, surcharge);
+        surchargeId = sr.Id || undefined;
+        logger.info("Recorded card surcharge as a sales receipt", {
+          merchantId: this.merchantId,
+          transactionId: transaction.id,
+          surcharge,
+          qbSalesReceiptId: surchargeId,
+        });
+      }
+
+      return {
+        kind: "payment",
+        id: result.Payment.Id!,
+        matchedCount: lines.length,
+        ...(surcharge > 0 && { surcharge, surchargeId }),
+      };
     }
 
-    // No invoice matched → record a Sales Receipt (sale + payment → income).
+    // No invoice matched → record a Sales Receipt for the FULL charged amount
+    // (surcharge included — it's all income, with no invoice to apply against).
     const receipt = await this.recordSale(client, transaction, customer, settings);
     return { kind: "sales_receipt", id: receipt.Id! };
   }
@@ -144,6 +175,51 @@ export class PaymentSyncService {
       amount: transaction.amount,
       terminal: isTerminal,
     });
+    return result.SalesReceipt;
+  }
+
+  /**
+   * Parse the card surcharge amount (added by Deluxe when surcharging is enabled
+   * on the account) from the transaction metadata. Returns 0 when absent or
+   * non-positive — i.e. ACH/debit/wallets and surcharge-disabled accounts.
+   */
+  private surchargeAmount(transaction: DPPTransaction): number {
+    const raw = transaction.metadata?.surcharge;
+    const n = raw ? parseFloat(String(raw)) : 0;
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+  }
+
+  /**
+   * Record a card surcharge as its own QuickBooks Sales Receipt so the FULL
+   * charged amount (invoice payment + surcharge) reconciles against the bank
+   * deposit. Posts to the configured sales item / income account.
+   */
+  private async recordSurcharge(
+    client: QuickBooksClient,
+    transaction: DPPTransaction,
+    customer: QBCustomer,
+    settings: MerchantSettings | null | undefined,
+    surcharge: number
+  ): Promise<QBSalesReceipt> {
+    const itemRef = await this.resolveSalesItem(client, settings);
+    const receipt: QBSalesReceipt = {
+      CustomerRef: { value: customer.Id!, name: customer.DisplayName },
+      TxnDate: new Date(transaction.created_at).toISOString().split("T")[0],
+      PaymentRefNum: `${transaction.id.substring(0, 18)}-sc`,
+      PrivateNote: `DPP card surcharge — ${transaction.payment_method} — ID: ${transaction.id}`,
+      ...(settings?.default_deposit_account && {
+        DepositToAccountRef: { value: settings.default_deposit_account },
+      }),
+      Line: [
+        {
+          Amount: surcharge,
+          DetailType: "SalesItemLineDetail",
+          SalesItemLineDetail: { ItemRef: itemRef },
+          Description: "Card processing surcharge",
+        },
+      ],
+    };
+    const result = await client.createSalesReceipt(receipt);
     return result.SalesReceipt;
   }
 
@@ -347,7 +423,10 @@ export class PaymentSyncService {
   private async matchInvoices(
     client: QuickBooksClient,
     customer: QBCustomer,
-    transaction: DPPTransaction
+    transaction: DPPTransaction,
+    // Amount to match/apply to invoices = the charged total minus any card
+    // surcharge, so it equals the invoice balance.
+    matchAmount: number
   ): Promise<QBPaymentLine[]> {
     if (!customer.Id) return [];
 
@@ -381,7 +460,7 @@ export class PaymentSyncService {
         );
 
         if (invoiceByNumber && invoiceByNumber.Id) {
-          const applyAmount = Math.min(transaction.amount, invoiceByNumber.Balance);
+          const applyAmount = Math.min(matchAmount, invoiceByNumber.Balance);
           logger.info("Matched payment to invoice by number", {
             invoiceId: invoiceByNumber.Id,
             docNumber: invoiceByNumber.DocNumber,
@@ -409,26 +488,26 @@ export class PaymentSyncService {
         });
       }
 
-      // Strategy 2: Exact amount match on a single invoice
+      // Strategy 2: Exact amount match on a single invoice (base amount)
       const exactMatch = openInvoices.find(
-        (inv) => Math.abs(inv.Balance - transaction.amount) < 0.01
+        (inv) => Math.abs(inv.Balance - matchAmount) < 0.01
       );
 
       if (exactMatch && exactMatch.Id) {
         logger.info("Matched payment to invoice by exact amount", {
           invoiceId: exactMatch.Id,
           docNumber: exactMatch.DocNumber,
-          amount: transaction.amount,
+          amount: matchAmount,
         });
         return [{
-          Amount: transaction.amount,
+          Amount: matchAmount,
           LinkedTxn: [{ TxnId: exactMatch.Id, TxnType: "Invoice" }],
         }];
       }
 
       // Strategy 3: Apply payment across multiple invoices (oldest first)
       const lines: QBPaymentLine[] = [];
-      let remaining = transaction.amount;
+      let remaining = matchAmount;
 
       for (const invoice of openInvoices) {
         if (remaining <= 0) break;
