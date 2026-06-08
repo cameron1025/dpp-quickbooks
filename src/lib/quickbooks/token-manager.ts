@@ -94,27 +94,89 @@ export async function getTokens(
 
 // ── Get Valid Tokens (auto-refresh if needed) ───────────────
 
-// In-memory single-flight: collapse concurrent refreshes for the same merchant
-// into one call. Intuit ROTATES the refresh token on every refresh and
-// invalidates the old one, so two UNCOORDINATED refreshes with the same token
-// drop the connection (the access token then dies ~1h later, surfacing as the
-// admin "Degraded" health and "Token refresh failed"). EVERY refresh — proactive
-// (getValidTokens) and reactive (QuickBooksClient on a 401) — must funnel through
-// singleFlightRefresh so only one rotation happens at a time. The app runs as a
-// single long-lived container, so a module-level map is sufficient.
+// Refresh coordination. Intuit ROTATES the refresh token on every refresh and
+// invalidates the old one; worse, if it sees the SAME refresh token used twice
+// (a "fork") it revokes the ENTIRE token family — a hard death that needs a
+// manual reconnect. So refreshes must be serialized at TWO levels:
+//  1. In-memory single-flight (refreshInFlight) — collapses concurrent refreshes
+//     WITHIN one container (proactive getValidTokens + reactive 401s).
+//  2. A DB lock (qb_tokens.refresh_lock_until) — serializes ACROSS containers,
+//     e.g. the old+new container that briefly run together during a Railway
+//     deploy. Without this, a refresh during deploy overlap forks the token.
 const refreshInFlight = new Map<string, Promise<QBTokens | null>>();
 
+// Far-past sentinel so the lock column is never NULL and we can claim it with a
+// simple `.lt(now)` (avoids PostgREST `.or()` timestamp-parsing pitfalls).
+const LOCK_PAST = "1970-01-01T00:00:00.000Z";
+const LOCK_TTL_MS = 30_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Perform exactly one coordinated token refresh per merchant. Concurrent callers
- * share the same in-flight promise. Hardened against the two ways a rotation can
- * poison the connection:
- *  - Re-reads the latest persisted token before refreshing, so it never refreshes
- *    with a stale in-memory token that a concurrent op already rotated.
- *  - If Intuit rejects the refresh but a concurrent op already stored a newer,
- *    still-valid token, it uses that instead of dropping the connection.
- *  - If persisting the rotated token fails, it retries and STILL returns the new
- *    token — Intuit has already killed the old one, so discarding it would poison
- *    the stored row and force a manual reconnect.
+ * Atomically claim the per-merchant refresh lock. Returns true if THIS process
+ * may refresh. Degrades safe: if the column doesn't exist yet (migration 007 not
+ * run) or the DB hiccups, returns true so refreshes are never blocked — that just
+ * reverts to the in-process-only behavior, no worse than before.
+ */
+async function acquireRefreshLock(merchantId: string): Promise<boolean> {
+  try {
+    const nowIso = new Date().toISOString();
+    const until = new Date(Date.now() + LOCK_TTL_MS).toISOString();
+    const { data, error } = await getSupabaseAdmin()
+      .from("qb_tokens")
+      .update({ refresh_lock_until: until })
+      .eq("merchant_id", merchantId)
+      .lt("refresh_lock_until", nowIso)
+      .select("merchant_id");
+    if (error) {
+      logger.warn("QB refresh lock unavailable; proceeding without cross-process lock", {
+        merchantId,
+        error: error.message,
+      });
+      return true;
+    }
+    return !!(data && data.length > 0);
+  } catch (err) {
+    logger.warn("QB refresh lock error; proceeding without cross-process lock", {
+      merchantId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return true;
+  }
+}
+
+async function releaseRefreshLock(merchantId: string): Promise<void> {
+  try {
+    await getSupabaseAdmin()
+      .from("qb_tokens")
+      .update({ refresh_lock_until: LOCK_PAST })
+      .eq("merchant_id", merchantId);
+  } catch {
+    // Best-effort: the lease expires on its own after LOCK_TTL_MS.
+  }
+}
+
+/** Another container holds the lock — poll for it to store the refreshed token. */
+async function waitForFreshToken(merchantId: string): Promise<QBTokens | null> {
+  for (let i = 0; i < 8; i++) {
+    await sleep(400);
+    const t = await getTokens(merchantId);
+    if (t && !isTokenExpired(t)) return t;
+    if (t && isRefreshTokenExpired(t)) return null;
+  }
+  return null; // transient: caller treats as no-token; self-heals next cycle
+}
+
+/**
+ * Perform exactly one coordinated token refresh per merchant. Hardened against
+ * every way a rotation can poison the connection:
+ *  - In-memory single-flight + DB lock so two refreshes never fork the token.
+ *  - Re-reads the latest persisted token before refreshing (never a stale one).
+ *  - If Intuit rejects but a concurrent op stored a newer valid token, uses it.
+ *  - If persisting the rotated token fails, retries and STILL returns it (the old
+ *    token is already dead at Intuit, so discarding it would poison the row).
  */
 function singleFlightRefresh(merchantId: string): Promise<QBTokens | null> {
   const existing = refreshInFlight.get(merchantId);
@@ -122,62 +184,75 @@ function singleFlightRefresh(merchantId: string): Promise<QBTokens | null> {
 
   const refreshPromise = (async (): Promise<QBTokens | null> => {
     try {
-      // Always refresh against the LATEST persisted token, not a stale snapshot.
       const latest = await getTokens(merchantId);
       if (!latest) return null;
-
+      // Another path already refreshed between the caller's check and now.
+      if (!isTokenExpired(latest)) return latest;
       if (isRefreshTokenExpired(latest)) {
         logger.warn("Refresh token expired, marking disconnected", { merchantId });
         await markDisconnected(merchantId);
         return null;
       }
 
-      let refreshed: QBTokens;
-      try {
-        refreshed = await refreshAccessToken(latest.refresh_token);
-      } catch (err) {
-        // Intuit rejected the token. If a concurrent refresh already rotated and
-        // stored a newer, still-valid token, recover by using it.
-        const newer = await getTokens(merchantId);
-        if (
-          newer &&
-          newer.refresh_token !== latest.refresh_token &&
-          !isTokenExpired(newer)
-        ) {
-          logger.warn("Refresh rejected but a newer token is stored; using it", {
-            merchantId,
-          });
-          return newer;
-        }
-        logger.error("QB token refresh rejected by Intuit (reconnect required)", {
-          merchantId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
+      // Cross-process serialization — see the note above.
+      const locked = await acquireRefreshLock(merchantId);
+      if (!locked) {
+        return await waitForFreshToken(merchantId);
       }
 
-      refreshed.realm_id = latest.realm_id;
-
       try {
-        await storeTokens(merchantId, refreshed);
-      } catch (storeErr) {
-        // The old refresh token is already dead at Intuit — do NOT discard the
-        // rotated one. Retry the persist; return the token regardless so the row
-        // isn't poisoned and the current request can still proceed.
-        logger.error("CRITICAL: refreshed QB token but failed to persist — retrying", {
-          merchantId,
-          error: storeErr instanceof Error ? storeErr.message : String(storeErr),
-        });
+        // Re-read after locking; the prior holder may have just stored a token.
+        const current = (await getTokens(merchantId)) || latest;
+        if (!isTokenExpired(current)) return current;
+        if (isRefreshTokenExpired(current)) {
+          await markDisconnected(merchantId);
+          return null;
+        }
+
+        let refreshed: QBTokens;
+        try {
+          refreshed = await refreshAccessToken(current.refresh_token);
+        } catch (err) {
+          const newer = await getTokens(merchantId);
+          if (
+            newer &&
+            newer.refresh_token !== current.refresh_token &&
+            !isTokenExpired(newer)
+          ) {
+            logger.warn("Refresh rejected but a newer token is stored; using it", {
+              merchantId,
+            });
+            return newer;
+          }
+          logger.error("QB token refresh rejected by Intuit (reconnect required)", {
+            merchantId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return null;
+        }
+
+        refreshed.realm_id = current.realm_id;
+
         try {
           await storeTokens(merchantId, refreshed);
-        } catch (retryErr) {
-          logger.error("CRITICAL: token persist retry failed — connection at risk", {
+        } catch (storeErr) {
+          logger.error("CRITICAL: refreshed QB token but failed to persist — retrying", {
             merchantId,
-            error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+            error: storeErr instanceof Error ? storeErr.message : String(storeErr),
           });
+          try {
+            await storeTokens(merchantId, refreshed);
+          } catch (retryErr) {
+            logger.error("CRITICAL: token persist retry failed — connection at risk", {
+              merchantId,
+              error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+            });
+          }
         }
+        return refreshed;
+      } finally {
+        await releaseRefreshLock(merchantId);
       }
-      return refreshed;
     } finally {
       refreshInFlight.delete(merchantId);
     }
