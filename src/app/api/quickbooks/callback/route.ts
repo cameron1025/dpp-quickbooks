@@ -10,6 +10,7 @@ import {
   exchangeCodeForTokens,
   getUserProfile,
   storeTokens,
+  QuickBooksClient,
 } from "@/lib/quickbooks";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { realmIdSchema } from "@/lib/sanitize";
@@ -91,6 +92,29 @@ export async function GET(request: NextRequest) {
     // ── Onboarding: a validated Deluxe MID carried from the connect step ──
     const onboardMid = request.cookies.get("onboard_mid")?.value || null;
 
+    // ── Resolve the merchant's BUSINESS name from QuickBooks ──
+    // This brands the customer-facing invoice email (From name + header). Use the
+    // QB company name (CompanyInfo.CompanyName), NOT the Intuit login profile,
+    // which is a person. Falls back to the profile name / email if the call fails.
+    let businessName: string | null = null;
+    try {
+      const qb = new QuickBooksClient(tokens);
+      const info = await qb.getCompanyInfo();
+      const qbName = (info?.CompanyInfo as any)?.CompanyName;
+      if (typeof qbName === "string" && qbName.trim()) {
+        businessName = qbName.trim();
+      }
+    } catch (err) {
+      logger.warn("Could not fetch QB company name at connect; falling back", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const resolvedCompanyName =
+      businessName ||
+      (profile.givenName && profile.familyName
+        ? `${profile.givenName} ${profile.familyName}`
+        : profile.email);
+
     // ── Upsert merchant record ──────────────────────────────
     const supabase = getSupabaseAdmin();
 
@@ -99,10 +123,7 @@ export async function GET(request: NextRequest) {
       .upsert(
         {
           email: profile.email,
-          company_name:
-            profile.givenName && profile.familyName
-              ? `${profile.givenName} ${profile.familyName}`
-              : profile.email,
+          company_name: resolvedCompanyName,
           qb_realm_id: tokens.realm_id,
           qb_connected: true,
           qb_connected_at: new Date().toISOString(),
