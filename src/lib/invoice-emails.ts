@@ -32,13 +32,15 @@ interface SendInvoiceEmailParams {
   attachment?: { filename: string; content: string };
 }
 
-const EMAIL_SUBJECTS: Record<string, (invoiceNumber: string) => string> = {
-  initial: (inv) => `Invoice ${inv} — Payment Request`,
-  before_due: (inv) => `Reminder: Invoice ${inv} Due Soon`,
-  due_today: (inv) => `Invoice ${inv} Is Due Today`,
-  overdue_3: (inv) => `Past Due: Invoice ${inv}`,
-  overdue_7: (inv) => `Second Notice: Invoice ${inv} Is Past Due`,
-  overdue_14: (inv) => `Final Reminder: Invoice ${inv} Is 14 Days Past Due`,
+// Subjects are merchant-branded: "{Merchant} - Invoice {inv}" for the initial
+// payment request, and merchant-prefixed for reminders (keeping their context).
+const EMAIL_SUBJECTS: Record<string, (invoiceNumber: string, businessName: string) => string> = {
+  initial: (inv, biz) => `${biz} - Invoice ${inv}`,
+  before_due: (inv, biz) => `${biz} - Reminder: Invoice ${inv} Due Soon`,
+  due_today: (inv, biz) => `${biz} - Invoice ${inv} Is Due Today`,
+  overdue_3: (inv, biz) => `${biz} - Past Due: Invoice ${inv}`,
+  overdue_7: (inv, biz) => `${biz} - Second Notice: Invoice ${inv} Is Past Due`,
+  overdue_14: (inv, biz) => `${biz} - Final Reminder: Invoice ${inv} Is 14 Days Past Due`,
 };
 
 const EMAIL_HEADLINES: Record<string, string> = {
@@ -90,7 +92,7 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
     .single();
   const businessName = merchant?.company_name || fromName || 'Billing';
 
-  const subject = EMAIL_SUBJECTS[emailType]?.(invoiceNumber) || `Invoice ${invoiceNumber}`;
+  const subject = EMAIL_SUBJECTS[emailType]?.(invoiceNumber, businessName) || `${businessName} - Invoice ${invoiceNumber}`;
   const headline = EMAIL_HEADLINES[emailType] || 'Invoice notification';
   const html = buildEmailHtml({
     businessName,
@@ -235,7 +237,7 @@ function buildEmailHtml(params: EmailHtmlParams): string {
                 ${headline}
               </p>
               <p style="margin:0 0 24px;color:#555555;font-size:14px;line-height:1.5;">
-                Hi ${customer}, here are the details and a secure link to pay.
+                Hi ${customer}, we appreciate your business. Please find your invoice details here. Feel free to contact us if you have any questions.
               </p>
 
               <!-- Invoice Details Card -->
