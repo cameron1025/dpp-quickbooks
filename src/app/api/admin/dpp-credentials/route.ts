@@ -18,6 +18,9 @@ export async function POST(request: NextRequest) {
     typeof body?.clientSecret === "string" ? body.clientSecret.trim() : "";
   const partnerToken =
     typeof body?.partnerToken === "string" ? body.partnerToken.trim() : "";
+  // Optional: embedded-checkout signing secret. Stored with the creds when given.
+  const signatureKey =
+    typeof body?.signatureKey === "string" ? body.signatureKey.trim() : "";
 
   if (!mid || !clientId || !clientSecret || !partnerToken) {
     return NextResponse.json(
@@ -27,7 +30,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await setMerchantDppCredentials(mid, { clientId, clientSecret, partnerToken });
+    await setMerchantDppCredentials(mid, {
+      clientId,
+      clientSecret,
+      partnerToken,
+      ...(signatureKey && { signatureKey }),
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json(
