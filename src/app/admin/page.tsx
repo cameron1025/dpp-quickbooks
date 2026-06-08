@@ -22,6 +22,21 @@ const cell: React.CSSProperties = {
   textAlign: "left",
   verticalAlign: "middle",
 };
+const fieldLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#374151",
+  marginBottom: "4px",
+};
+const fieldInput: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  fontSize: "14px",
+  border: "1px solid #d0d0d7",
+  borderRadius: "8px",
+  boxSizing: "border-box",
+};
 
 function Pill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -195,83 +210,90 @@ export default function AdminDashboard() {
           }}
         >
           <h2 style={{ fontSize: "16px", margin: "0 0 12px" }}>Onboard a new client</h2>
-          <form onSubmit={generate} style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            <input
-              value={mid}
-              onChange={(e) => setMid(e.target.value)}
-              placeholder="Client's Deluxe MID"
-              style={{
-                flex: "1 1 200px",
-                padding: "10px 12px",
-                fontSize: "14px",
-                border: "1px solid #d0d0d7",
-                borderRadius: "8px",
-              }}
-            />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Client email (optional, to send invite)"
-              style={{
-                flex: "1 1 220px",
-                padding: "10px 12px",
-                fontSize: "14px",
-                border: "1px solid #d0d0d7",
-                borderRadius: "8px",
-              }}
-            />
-            <input
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Deluxe Client ID"
-              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-            />
-            <input
-              type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Deluxe Client Secret"
-              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-            />
-            <input
-              value={partnerToken}
-              onChange={(e) => setPartnerToken(e.target.value)}
-              placeholder="Deluxe Partner Token"
-              style={{ flex: "1 1 180px", padding: "10px 12px", fontSize: "14px", border: "1px solid #d0d0d7", borderRadius: "8px" }}
-            />
-            <button
-              type="submit"
-              style={{
-                padding: "10px 18px",
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#fff",
-                background: "#2563EB",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-              }}
-            >
-              Generate link
-            </button>
-            <button
-              type="button"
-              onClick={sendInvite}
-              disabled={sending || !mid.trim() || !email.trim()}
-              style={{
-                padding: "10px 18px",
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#fff",
-                background: sending || !mid.trim() || !email.trim() ? "#9CA3AF" : "#16a34a",
-                border: "none",
-                borderRadius: "8px",
-                cursor: sending || !mid.trim() || !email.trim() ? "default" : "pointer",
-              }}
-            >
-              {sending ? "Sending…" : "Send invite email"}
-            </button>
+          <form onSubmit={generate} style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "480px" }}>
+            <div>
+              <label style={fieldLabel}>Client Deluxe MID</label>
+              <input
+                value={mid}
+                onChange={(e) => setMid(e.target.value)}
+                placeholder="Deluxe MID"
+                style={fieldInput}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>Deluxe Client ID</label>
+              <input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Client ID"
+                style={fieldInput}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>Deluxe Secret Key</label>
+              <input
+                type="password"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder="Secret Key"
+                style={fieldInput}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>Deluxe Access (Partner) Token</label>
+              <input
+                value={partnerToken}
+                onChange={(e) => setPartnerToken(e.target.value)}
+                placeholder="Access (Partner) Token"
+                style={fieldInput}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>
+                Client email <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional — to send the invite)</span>
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@example.com"
+                style={fieldInput}
+              />
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+              <button
+                type="submit"
+                style={{
+                  padding: "10px 18px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#fff",
+                  background: "#2563EB",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+              >
+                Generate link
+              </button>
+              <button
+                type="button"
+                onClick={sendInvite}
+                disabled={sending || !mid.trim() || !email.trim()}
+                style={{
+                  padding: "10px 18px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#fff",
+                  background: sending || !mid.trim() || !email.trim() ? "#9CA3AF" : "#16a34a",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: sending || !mid.trim() || !email.trim() ? "default" : "pointer",
+                }}
+              >
+                {sending ? "Sending…" : "Send invite email"}
+              </button>
+            </div>
           </form>
           {linkErr && (
             <p style={{ color: "#DC2626", fontSize: "13px", marginTop: "10px" }}>{linkErr}</p>
