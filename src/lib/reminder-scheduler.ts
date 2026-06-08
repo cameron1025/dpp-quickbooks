@@ -13,7 +13,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
-import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
+import { getValidTokens, forceRefreshTokens } from '@/lib/quickbooks/token-manager';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
 import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
 
@@ -210,9 +210,7 @@ async function refreshInvoiceBalance(merchant: any, invoice: any): Promise<any> 
       return invoice;
     }
     const qbClient = new QuickBooksClient(tokens, {
-      onTokenRefresh: async (newTokens) => {
-        await storeTokens(merchant.id, newTokens);
-      },
+      refreshTokens: () => forceRefreshTokens(merchant.id),
     });
     const result = await qbClient.getInvoice(invoice.qb_invoice_id);
     const qbInvoice = result?.Invoice || null;

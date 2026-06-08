@@ -95,11 +95,97 @@ export async function getTokens(
 // ── Get Valid Tokens (auto-refresh if needed) ───────────────
 
 // In-memory single-flight: collapse concurrent refreshes for the same merchant
-// into one call. Intuit ROTATES the refresh token on every refresh, so two
-// concurrent refreshes with the same token can invalidate the stored one and
-// drop the connection (the cause of the admin "Disconnected" flapping). The
-// app runs as a single long-lived container, so a module-level map is enough.
+// into one call. Intuit ROTATES the refresh token on every refresh and
+// invalidates the old one, so two UNCOORDINATED refreshes with the same token
+// drop the connection (the access token then dies ~1h later, surfacing as the
+// admin "Degraded" health and "Token refresh failed"). EVERY refresh — proactive
+// (getValidTokens) and reactive (QuickBooksClient on a 401) — must funnel through
+// singleFlightRefresh so only one rotation happens at a time. The app runs as a
+// single long-lived container, so a module-level map is sufficient.
 const refreshInFlight = new Map<string, Promise<QBTokens | null>>();
+
+/**
+ * Perform exactly one coordinated token refresh per merchant. Concurrent callers
+ * share the same in-flight promise. Hardened against the two ways a rotation can
+ * poison the connection:
+ *  - Re-reads the latest persisted token before refreshing, so it never refreshes
+ *    with a stale in-memory token that a concurrent op already rotated.
+ *  - If Intuit rejects the refresh but a concurrent op already stored a newer,
+ *    still-valid token, it uses that instead of dropping the connection.
+ *  - If persisting the rotated token fails, it retries and STILL returns the new
+ *    token — Intuit has already killed the old one, so discarding it would poison
+ *    the stored row and force a manual reconnect.
+ */
+function singleFlightRefresh(merchantId: string): Promise<QBTokens | null> {
+  const existing = refreshInFlight.get(merchantId);
+  if (existing) return existing;
+
+  const refreshPromise = (async (): Promise<QBTokens | null> => {
+    try {
+      // Always refresh against the LATEST persisted token, not a stale snapshot.
+      const latest = await getTokens(merchantId);
+      if (!latest) return null;
+
+      if (isRefreshTokenExpired(latest)) {
+        logger.warn("Refresh token expired, marking disconnected", { merchantId });
+        await markDisconnected(merchantId);
+        return null;
+      }
+
+      let refreshed: QBTokens;
+      try {
+        refreshed = await refreshAccessToken(latest.refresh_token);
+      } catch (err) {
+        // Intuit rejected the token. If a concurrent refresh already rotated and
+        // stored a newer, still-valid token, recover by using it.
+        const newer = await getTokens(merchantId);
+        if (
+          newer &&
+          newer.refresh_token !== latest.refresh_token &&
+          !isTokenExpired(newer)
+        ) {
+          logger.warn("Refresh rejected but a newer token is stored; using it", {
+            merchantId,
+          });
+          return newer;
+        }
+        logger.error("QB token refresh rejected by Intuit (reconnect required)", {
+          merchantId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+
+      refreshed.realm_id = latest.realm_id;
+
+      try {
+        await storeTokens(merchantId, refreshed);
+      } catch (storeErr) {
+        // The old refresh token is already dead at Intuit — do NOT discard the
+        // rotated one. Retry the persist; return the token regardless so the row
+        // isn't poisoned and the current request can still proceed.
+        logger.error("CRITICAL: refreshed QB token but failed to persist — retrying", {
+          merchantId,
+          error: storeErr instanceof Error ? storeErr.message : String(storeErr),
+        });
+        try {
+          await storeTokens(merchantId, refreshed);
+        } catch (retryErr) {
+          logger.error("CRITICAL: token persist retry failed — connection at risk", {
+            merchantId,
+            error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+          });
+        }
+      }
+      return refreshed;
+    } finally {
+      refreshInFlight.delete(merchantId);
+    }
+  })();
+
+  refreshInFlight.set(merchantId, refreshPromise);
+  return refreshPromise;
+}
 
 export async function getValidTokens(
   merchantId: string
@@ -119,26 +205,20 @@ export async function getValidTokens(
     return tokens;
   }
 
-  // Access token expired — refresh, but only once per merchant at a time.
-  const existing = refreshInFlight.get(merchantId);
-  if (existing) return existing;
+  // Access token expired — refresh through the single coordinated path.
+  return singleFlightRefresh(merchantId);
+}
 
-  const refreshPromise = (async (): Promise<QBTokens | null> => {
-    try {
-      const refreshed = await refreshAccessToken(tokens.refresh_token);
-      refreshed.realm_id = tokens.realm_id;
-      await storeTokens(merchantId, refreshed);
-      return refreshed;
-    } catch (err) {
-      logger.error("Token refresh failed", { merchantId, error: err });
-      return null;
-    } finally {
-      refreshInFlight.delete(merchantId);
-    }
-  })();
-
-  refreshInFlight.set(merchantId, refreshPromise);
-  return refreshPromise;
+/**
+ * Force a coordinated refresh NOW, regardless of the access-token clock — used by
+ * QuickBooksClient when QuickBooks returns 401 on a token that still looks valid.
+ * Routes through the SAME single-flight path as getValidTokens, so the API client
+ * can never rotate the refresh token out from under a proactive refresh.
+ */
+export async function forceRefreshTokens(
+  merchantId: string
+): Promise<QBTokens | null> {
+  return singleFlightRefresh(merchantId);
 }
 
 // ── Revoke & Delete Tokens (disconnect from app) ────────────

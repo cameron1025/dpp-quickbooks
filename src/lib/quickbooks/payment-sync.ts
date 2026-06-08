@@ -5,7 +5,7 @@
 // Matches payments against open invoices when possible.
 
 import { QuickBooksClient } from "./client";
-import { getValidTokens, storeTokens } from "./token-manager";
+import { getValidTokens, forceRefreshTokens } from "./token-manager";
 import {
   DPPTransaction,
   MerchantSettings,
@@ -44,9 +44,7 @@ export class PaymentSyncService {
       throw new Error(`No valid QuickBooks tokens for merchant ${this.merchantId}`);
     }
     return new QuickBooksClient(tokens, {
-      onTokenRefresh: async (newTokens) => {
-        await storeTokens(this.merchantId, newTokens);
-      },
+      refreshTokens: () => forceRefreshTokens(this.merchantId),
     });
   }
 

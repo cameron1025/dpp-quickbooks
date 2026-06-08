@@ -11,7 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
-import { getValidTokens, storeTokens } from '@/lib/quickbooks/token-manager';
+import { getValidTokens, forceRefreshTokens } from '@/lib/quickbooks/token-manager';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
 import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
@@ -98,9 +98,7 @@ async function handleInvoiceCreate(
       return;
     }
     const qbClient = new QuickBooksClient(tokens, {
-      onTokenRefresh: async (newTokens) => {
-        await storeTokens(merchant.id, newTokens);
-      },
+      refreshTokens: () => forceRefreshTokens(merchant.id),
     });
     const result = await qbClient.getInvoice(invoiceId);
     const invoice = result?.Invoice || null;
@@ -258,9 +256,7 @@ async function handleInvoiceUpdate(
     const tokens = await getValidTokens(merchant.id);
     if (!tokens) return;
     const qbClient = new QuickBooksClient(tokens, {
-      onTokenRefresh: async (newTokens) => {
-        await storeTokens(merchant.id, newTokens);
-      },
+      refreshTokens: () => forceRefreshTokens(merchant.id),
     });
     const result = await qbClient.getInvoice(invoiceId);
     const invoice = result?.Invoice || null;
