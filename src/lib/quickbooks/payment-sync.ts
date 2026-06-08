@@ -480,29 +480,48 @@ export class PaymentSyncService {
     client: QuickBooksClient,
     transaction: DPPTransaction
   ): Promise<QBCustomer> {
-    // Try to find by email first
-    if (transaction.customer_email) {
-      const existing = await client.findCustomerByEmail(
-        transaction.customer_email
-      );
-      if (existing) return existing;
+    // Placeholder emails (synthesised when the gateway sends no email) never
+    // match a real QB customer and must not be written onto one.
+    const email = transaction.customer_email;
+    const realEmail =
+      email && !email.endsWith("@dpp-placeholder.com") ? email : undefined;
+
+    // 1. Find by email.
+    if (realEmail) {
+      const byEmail = await client.findCustomerByEmail(realEmail);
+      if (byEmail) return byEmail;
     }
 
-    // Create a new customer
+    // 2. Find by display name. The invoice's customer almost always already
+    //    exists in QB, so match them instead of creating a duplicate — creating
+    //    one fails with QB's "Duplicate Name Exists" error AND would leave the
+    //    payment unmatched (a new customer has no invoices).
     const displayName =
       transaction.customer_name ||
-      transaction.customer_email ||
+      realEmail ||
       `DPP Customer ${transaction.id.substring(0, 8)}`;
 
+    const byName = await client.findCustomerByName(displayName);
+    if (byName) return byName;
+
+    // 3. Create — and if QB says the name already exists (e.g. an email mismatch
+    //    hid an existing customer), fetch that customer rather than failing.
     const newCustomer: QBCustomer = {
       DisplayName: displayName,
-      ...(transaction.customer_email && {
-        PrimaryEmailAddr: { Address: transaction.customer_email },
-      }),
+      ...(realEmail && { PrimaryEmailAddr: { Address: realEmail } }),
     };
 
-    const result = await client.createCustomer(newCustomer);
-    return result.Customer;
+    try {
+      const result = await client.createCustomer(newCustomer);
+      return result.Customer;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/duplicate name/i.test(msg) || /\b6240\b/.test(msg)) {
+        const existing = await client.findCustomerByName(displayName);
+        if (existing) return existing;
+      }
+      throw err;
+    }
   }
 
   /**
