@@ -210,13 +210,14 @@ export default function AdminDashboard() {
           }}
         >
           <h2 style={{ fontSize: "16px", margin: "0 0 12px" }}>Onboard a new client</h2>
-          <form onSubmit={generate} style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "480px" }}>
+          <form onSubmit={generate} autoComplete="off" style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "480px" }}>
             <div>
               <label style={fieldLabel}>Client Deluxe MID</label>
               <input
                 value={mid}
                 onChange={(e) => setMid(e.target.value)}
                 placeholder="Deluxe MID"
+                autoComplete="off"
                 style={fieldInput}
               />
             </div>
@@ -226,6 +227,7 @@ export default function AdminDashboard() {
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 placeholder="Client ID"
+                autoComplete="off"
                 style={fieldInput}
               />
             </div>
@@ -236,6 +238,10 @@ export default function AdminDashboard() {
                 value={clientSecret}
                 onChange={(e) => setClientSecret(e.target.value)}
                 placeholder="Secret Key"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore
+                data-form-type="other"
                 style={fieldInput}
               />
             </div>
@@ -245,6 +251,7 @@ export default function AdminDashboard() {
                 value={partnerToken}
                 onChange={(e) => setPartnerToken(e.target.value)}
                 placeholder="Access (Partner) Token"
+                autoComplete="off"
                 style={fieldInput}
               />
             </div>
@@ -257,6 +264,7 @@ export default function AdminDashboard() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="client@example.com"
+                autoComplete="off"
                 style={fieldInput}
               />
             </div>
