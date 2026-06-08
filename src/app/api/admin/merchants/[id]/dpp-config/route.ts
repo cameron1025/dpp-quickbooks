@@ -29,6 +29,9 @@ export async function POST(
     typeof body?.partnerToken === "string" ? body.partnerToken.trim() : "";
   const signatureKey =
     typeof body?.signatureKey === "string" ? body.signatureKey.trim() : "";
+  // null = field not sent; string (incl. "") = set/clear the logo.
+  const logoUrl =
+    typeof body?.logo_url === "string" ? body.logo_url.trim() : null;
 
   if (!mid) {
     return NextResponse.json({ error: "MID is required" }, { status: 400 });
@@ -41,6 +44,15 @@ export async function POST(
     .eq("id", id);
   if (error) {
     return NextResponse.json({ error: "Failed to update MID" }, { status: 500 });
+  }
+
+  // Logo is best-effort: a not-yet-migrated logo_url column must not block the
+  // MID/credential save (run sql/006_merchant_logo_url.sql to enable it).
+  if (logoUrl !== null) {
+    await getSupabaseAdmin()
+      .from("merchants")
+      .update({ logo_url: logoUrl || null, updated_at: new Date().toISOString() })
+      .eq("id", id);
   }
 
   // Store credentials when the core three are present (optionally with the

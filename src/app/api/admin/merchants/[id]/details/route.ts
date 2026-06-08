@@ -117,6 +117,7 @@ export async function GET(
       dpp_subscribed_at: merchant.dpp_subscribed_at,
       dpp_subscription_ids: merchant.dpp_subscription_ids,
       invoice_email_mode: merchant.invoice_email_mode || "paysync",
+      logo_url: (merchant as any).logo_url ?? null,
     },
     subscribed: !!merchant.dpp_subscribed_at,
     hasCredentials: !!credentials,

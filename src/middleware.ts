@@ -23,6 +23,7 @@ const PUBLIC_ROUTES = [
   "/api/sync/retry",
   "/embed",
   "/api/embed",
+  "/pay",
 ];
 
 export async function middleware(request: NextRequest) {
