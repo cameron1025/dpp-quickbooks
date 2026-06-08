@@ -27,11 +27,17 @@ export class QuickBooksClient {
   private tokens: QBTokens;
   private baseUrl: string;
   private onTokenRefresh?: (tokens: QBTokens) => Promise<void>;
+  private refreshTokens?: () => Promise<QBTokens | null>;
 
   constructor(
     tokens: QBTokens,
     options?: {
       onTokenRefresh?: (tokens: QBTokens) => Promise<void>;
+      // Coordinated refresher (single-flight, persisted). When provided, the
+      // client delegates ALL refreshes to it instead of rotating Intuit's
+      // refresh token itself — preventing the uncoordinated double-refresh that
+      // invalidates the connection. Wire this to forceRefreshTokens(merchantId).
+      refreshTokens?: () => Promise<QBTokens | null>;
     }
   ) {
     this.tokens = tokens;
@@ -40,6 +46,30 @@ export class QuickBooksClient {
         ? QB_BASE_URL.production
         : QB_BASE_URL.sandbox;
     this.onTokenRefresh = options?.onTokenRefresh;
+    this.refreshTokens = options?.refreshTokens;
+  }
+
+  // Obtain a fresh token. Prefer the coordinated refresher (single-flight +
+  // persisted) so the client never rotates Intuit's refresh token out from under
+  // another refresh. Falls back to a direct refresh only when no coordinator was
+  // supplied (legacy callers).
+  private async refreshTokensNow(): Promise<void> {
+    if (this.refreshTokens) {
+      const t = await this.refreshTokens();
+      if (!t) {
+        throw new QuickBooksApiError(
+          "QuickBooks token refresh failed (reconnect required)",
+          401,
+          ""
+        );
+      }
+      this.tokens = t; // the coordinator already persisted it
+      return;
+    }
+    this.tokens = await refreshAccessToken(this.tokens.refresh_token);
+    if (this.onTokenRefresh) {
+      await this.onTokenRefresh(this.tokens);
+    }
   }
 
   // ── Core request method with auto-refresh ─────────────────
@@ -53,10 +83,7 @@ export class QuickBooksClient {
     // Auto-refresh if expired
     if (isTokenExpired(this.tokens)) {
       logger.info("Access token expired, refreshing...");
-      this.tokens = await refreshAccessToken(this.tokens.refresh_token);
-      if (this.onTokenRefresh) {
-        await this.onTokenRefresh(this.tokens);
-      }
+      await this.refreshTokensNow();
     }
 
     const url = `${this.baseUrl}/v3/company/${this.tokens.realm_id}/${endpoint}`;
@@ -71,13 +98,10 @@ export class QuickBooksClient {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    // Handle 401 — retry once with refreshed token
+    // Handle 401 — retry once with a coordinated refreshed token
     if (response.status === 401 && retryCount < 1) {
-      logger.warn("Got 401, attempting token refresh and retry...");
-      this.tokens = await refreshAccessToken(this.tokens.refresh_token);
-      if (this.onTokenRefresh) {
-        await this.onTokenRefresh(this.tokens);
-      }
+      logger.warn("Got 401, attempting coordinated token refresh and retry...");
+      await this.refreshTokensNow();
       return this.request<T>(method, endpoint, body, retryCount + 1);
     }
 
