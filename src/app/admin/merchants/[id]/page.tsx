@@ -39,10 +39,11 @@ interface Details {
     status: string;
     dpp_subscribed_at: string | null;
     invoice_email_mode: "paysync" | "qb_native";
+    logo_url?: string | null;
   };
   subscribed: boolean;
   hasCredentials: boolean;
-  credentials: { clientId: string; clientSecret: string; partnerToken: string } | null;
+  credentials: { clientId: string; clientSecret: string; partnerToken: string; signatureKey?: string } | null;
   connectionHealth: "healthy" | "degraded" | "disconnected";
   settings: Record<string, unknown>;
   reminderSettings: Record<string, unknown>;
@@ -138,6 +139,9 @@ export default function AdminMerchantDetail() {
   const [pToken, setPToken] = useState("");
   const [showSecret, setShowSecret] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [sigKey, setSigKey] = useState("");
+  const [showSig, setShowSig] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
   const [rem, setRem] = useState<ReminderForm | null>(null);
@@ -171,10 +175,12 @@ export default function AdminMerchantDetail() {
   useEffect(() => {
     if (!data) return;
     setMidField(data.merchant.dpp_merchant_id || "");
+    setLogoUrl(data.merchant.logo_url || "");
     if (data.credentials) {
       setCId(data.credentials.clientId || "");
       setCSecret(data.credentials.clientSecret || "");
       setPToken(data.credentials.partnerToken || "");
+      setSigKey(data.credentials.signatureKey || "");
     }
     const r = data.reminderSettings as Record<string, unknown>;
     setRem({
@@ -266,6 +272,8 @@ export default function AdminMerchantDetail() {
           clientId: cId.trim(),
           clientSecret: cSecret.trim(),
           partnerToken: pToken.trim(),
+          signatureKey: sigKey.trim(),
+          logo_url: logoUrl.trim(),
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -413,6 +421,33 @@ export default function AdminMerchantDetail() {
                       {showToken ? "🙈" : "👁"}
                     </button>
                   </div>
+                </div>
+                <div>
+                  <label style={fieldLabel}>Embedded Signature Key (optional)</label>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type={showSig ? "text" : "password"}
+                      value={sigKey}
+                      onChange={(e) => setSigKey(e.target.value)}
+                      placeholder="HS256 signing key for the embedded checkout"
+                      style={{ ...fieldInput, flex: 1 }}
+                    />
+                    <button type="button" onClick={() => setShowSig((s) => !s)} aria-label="Toggle signature key visibility" style={eyeButton}>
+                      {showSig ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#9ca3af" }}>
+                    Enables the branded in-page payment form. Leave blank to use the redirect pay link.
+                  </span>
+                </div>
+                <div>
+                  <label style={fieldLabel}>Logo URL (optional)</label>
+                  <input
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    placeholder="https://… public image for the payment page header"
+                    style={fieldInput}
+                  />
                 </div>
                 <div>
                   <button

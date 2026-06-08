@@ -14,7 +14,8 @@ import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, forceRefreshTokens } from '@/lib/quickbooks/token-manager';
 import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
-import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
+import { getMerchantDppCredentialsOrNull } from '@/lib/dpp/credentials';
+import { signPayToken } from '@/lib/dpp/pay-token';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -127,27 +128,34 @@ async function handleInvoiceCreate(
     const balanceDue = invoice.Balance;
     const dueDate = invoice.DueDate || null;
 
-    // Create a payment link under the CLIENT's own Deluxe account (guarantees
-    // Card + ACH, locks the amount). If their credentials are missing or the
-    // API fails, we do NOT send a misrouted link — skip and surface it
-    // (reminders will retry once credentials/API are healthy).
+    // Load the merchant's Deluxe credentials once (null if not configured).
+    const creds = await getMerchantDppCredentialsOrNull(merchant.dpp_merchant_id);
+
+    // Create a Deluxe redirect payment link under the CLIENT's own account
+    // (guarantees Card + ACH, locks the amount). Used for merchants NOT set up for
+    // the embedded checkout, and as a fallback. Embedded merchants don't need it.
     let payNowUrl: string | null = null;
-    try {
-      const creds = await getMerchantDppCredentials(merchant.dpp_merchant_id);
-      const link = await createInvoicePaymentLink(
-        { invoiceNumber, amount: balanceDue, customerName },
-        creds
-      );
-      payNowUrl = link.url;
-    } catch (linkErr) {
-      console.error(
-        `[Invoice Webhook] Could not create payment link for invoice ${invoiceId} (MID ${merchant.dpp_merchant_id}):`,
-        linkErr
+    if (creds) {
+      try {
+        const link = await createInvoicePaymentLink(
+          { invoiceNumber, amount: balanceDue, customerName },
+          creds
+        );
+        payNowUrl = link.url;
+      } catch (linkErr) {
+        console.error(
+          `[Invoice Webhook] Could not create payment link for invoice ${invoiceId} (MID ${merchant.dpp_merchant_id}):`,
+          linkErr
+        );
+      }
+    } else {
+      console.warn(
+        `[Invoice Webhook] No Deluxe credentials for MID ${merchant.dpp_merchant_id}; cannot create a pay link.`
       );
     }
 
-    // Upsert into tracked_invoices
-    const { error: trackErr } = await supabase
+    // Upsert into tracked_invoices (return the id so we can mint the pay token).
+    const { data: tracked, error: trackErr } = await supabase
       .from('tracked_invoices')
       .upsert({
         merchant_id: merchant.id,
@@ -163,27 +171,37 @@ async function handleInvoiceCreate(
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'merchant_id,qb_invoice_id',
-      });
+      })
+      .select('id')
+      .single();
 
-    if (trackErr) {
+    if (trackErr || !tracked) {
       console.error(`[Invoice Webhook] Failed to track invoice:`, trackErr);
       return;
     }
+
+    // The customer-facing pay URL: the branded embedded checkout (/pay) when the
+    // merchant has an embedded Signature Key, otherwise the Deluxe redirect link.
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL || 'https://dpp-quickbooks-production.up.railway.app';
+    const customerPayUrl = creds?.signatureKey
+      ? `${appUrl}/pay/${signPayToken(tracked.id)}`
+      : payNowUrl;
 
     // Mode: 'qb_native' embeds the pay link in the QB invoice (rides QB's own
     // email / PDF / hosted view); 'paysync' (default) sends PaySync's own email.
     const mode = merchant.invoice_email_mode || 'paysync';
 
     if (mode === 'qb_native') {
-      if (payNowUrl) {
+      if (customerPayUrl) {
         try {
           const existingMemo = invoice.CustomerMemo?.value || '';
           if (existingMemo.includes('Pay online:')) {
             console.log(`[Invoice Webhook] Invoice ${invoiceNumber} already has a pay link in its memo; skipping embed.`);
           } else {
             const newMemo = existingMemo
-              ? `${existingMemo}\n\nPay online: ${payNowUrl}`
-              : `Pay online: ${payNowUrl}`;
+              ? `${existingMemo}\n\nPay online: ${customerPayUrl}`
+              : `Pay online: ${customerPayUrl}`;
             await qbClient.updateInvoiceMemo(invoiceId, invoice.SyncToken || '', newMemo);
             console.log(`[Invoice Webhook] Embedded pay link in QB invoice ${invoiceNumber} (qb_native mode).`);
           }
@@ -206,7 +224,7 @@ async function handleInvoiceCreate(
     const sentFromQB =
       invoice.EmailStatus === 'EmailSent' || invoice.EmailStatus === 'NeedToSend';
 
-    if (merchant.reminder_send_initial && !sentFromQB && payNowUrl) {
+    if (merchant.reminder_send_initial && !sentFromQB && customerPayUrl) {
       // Attach the QB-branded invoice PDF so the email looks native.
       // Best-effort: still send (without attachment) if the PDF fetch fails.
       let attachment: { filename: string; content: string } | undefined;
@@ -225,7 +243,7 @@ async function handleInvoiceCreate(
         customerName,
         amount: balanceDue,
         dueDate,
-        payNowUrl,
+        payNowUrl: customerPayUrl,
         emailType: 'initial',
         fromName: merchant.reminder_from_name || 'Billing',
         replyTo: merchant.reminder_reply_to,
@@ -234,8 +252,8 @@ async function handleInvoiceCreate(
       console.log(`[Invoice Webhook] Tracked + emailed invoice ${invoiceNumber} to ${customerEmail}`);
     } else if (sentFromQB) {
       console.log(`[Invoice Webhook] Invoice ${invoiceNumber} sent from QuickBooks (EmailStatus=${invoice.EmailStatus}); tracked for reminders, skipped initial email.`);
-    } else if (merchant.reminder_send_initial && !payNowUrl) {
-      console.warn(`[Invoice Webhook] Invoice ${invoiceNumber} tracked but no payment link (check Deluxe credentials for MID ${merchant.dpp_merchant_id}); initial email skipped — reminders will retry.`);
+    } else if (merchant.reminder_send_initial && !customerPayUrl) {
+      console.warn(`[Invoice Webhook] Invoice ${invoiceNumber} tracked but no pay URL (check Deluxe credentials for MID ${merchant.dpp_merchant_id}); initial email skipped — reminders will retry.`);
     } else {
       console.log(`[Invoice Webhook] Invoice ${invoiceNumber} tracked; initial email disabled for merchant.`);
     }

@@ -15,7 +15,8 @@ import { sendInvoiceEmail } from '@/lib/invoice-emails';
 import { QuickBooksClient } from '@/lib/quickbooks/client';
 import { getValidTokens, forceRefreshTokens } from '@/lib/quickbooks/token-manager';
 import { createInvoicePaymentLink } from '@/lib/dpp/payment-link';
-import { getMerchantDppCredentials } from '@/lib/dpp/credentials';
+import { getMerchantDppCredentialsOrNull } from '@/lib/dpp/credentials';
+import { signPayToken } from '@/lib/dpp/pay-token';
 
 type EmailType = 'initial' | 'before_due' | 'due_today' | 'overdue_3' | 'overdue_7' | 'overdue_14';
 
@@ -116,31 +117,41 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
     // API error; skip the reminder entirely if there's no valid link.
     let payNowUrl: string | null =
       invoice.pay_now_url && invoice.pay_now_url !== '#' ? invoice.pay_now_url : null;
-    try {
-      const creds = await getMerchantDppCredentials(merchant.dpp_merchant_id);
-      const link = await createInvoicePaymentLink(
-        {
-          invoiceNumber: invoice.invoice_number,
-          amount: invoice.balance_due,
-          customerName: invoice.customer_name || undefined,
-        },
-        creds
-      );
-      payNowUrl = link.url;
-      await supabase
-        .from('tracked_invoices')
-        .update({ pay_now_url: link.url, updated_at: new Date().toISOString() })
-        .eq('id', invoice.id);
-    } catch (linkErr) {
-      console.warn(
-        `[Reminder Scheduler] Payment link regen failed for ${invoice.invoice_number} (MID ${merchant.dpp_merchant_id}); using existing link if any:`,
-        linkErr
-      );
+    const creds = await getMerchantDppCredentialsOrNull(merchant.dpp_merchant_id);
+    if (creds) {
+      try {
+        const link = await createInvoicePaymentLink(
+          {
+            invoiceNumber: invoice.invoice_number,
+            amount: invoice.balance_due,
+            customerName: invoice.customer_name || undefined,
+          },
+          creds
+        );
+        payNowUrl = link.url;
+        await supabase
+          .from('tracked_invoices')
+          .update({ pay_now_url: link.url, updated_at: new Date().toISOString() })
+          .eq('id', invoice.id);
+      } catch (linkErr) {
+        console.warn(
+          `[Reminder Scheduler] Payment link regen failed for ${invoice.invoice_number} (MID ${merchant.dpp_merchant_id}); using existing link if any:`,
+          linkErr
+        );
+      }
     }
 
-    if (!payNowUrl) {
+    // Branded embedded checkout (stable /pay link) when the merchant has an
+    // embedded Signature Key, else the Deluxe redirect link.
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL || 'https://dpp-quickbooks-production.up.railway.app';
+    const customerPayUrl = creds?.signatureKey
+      ? `${appUrl}/pay/${signPayToken(invoice.id)}`
+      : payNowUrl;
+
+    if (!customerPayUrl) {
       console.warn(
-        `[Reminder Scheduler] No payment link for ${invoice.invoice_number}; skipping reminder (check Deluxe credentials).`
+        `[Reminder Scheduler] No pay URL for ${invoice.invoice_number}; skipping reminder (check Deluxe credentials).`
       );
       result.skipped++;
       continue;
@@ -155,7 +166,7 @@ async function processRemindersForMerchant(merchant: any): Promise<ReminderResul
         customerName: invoice.customer_name || 'Customer',
         amount: invoice.balance_due,
         dueDate: invoice.due_date,
-        payNowUrl,
+        payNowUrl: customerPayUrl,
         emailType: emailType as EmailType,
         fromName: merchant.reminder_from_name,
         replyTo: merchant.reminder_reply_to,
