@@ -16,6 +16,10 @@ export interface DppCredentials {
   clientId: string;
   clientSecret: string;
   partnerToken: string;
+  // Embedded Payments SDK signing secret (HS256). Optional: only merchants set up
+  // for the embedded checkout have one. The embedded `accessToken` is the same
+  // value as `partnerToken` (confirmed with Deluxe), so no separate field needed.
+  signatureKey?: string;
 }
 
 /** Thrown when a MID has no stored credentials. */

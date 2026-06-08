@@ -6,7 +6,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isValidAdminCookie, ADMIN_COOKIE_NAME } from "@/lib/admin-auth";
-import { setMerchantDppCredentials } from "@/lib/dpp/credentials";
+import {
+  setMerchantDppCredentials,
+  getMerchantDppCredentialsOrNull,
+} from "@/lib/dpp/credentials";
 
 export async function POST(
   request: NextRequest,
@@ -24,6 +27,8 @@ export async function POST(
     typeof body?.clientSecret === "string" ? body.clientSecret.trim() : "";
   const partnerToken =
     typeof body?.partnerToken === "string" ? body.partnerToken.trim() : "";
+  const signatureKey =
+    typeof body?.signatureKey === "string" ? body.signatureKey.trim() : "";
 
   if (!mid) {
     return NextResponse.json({ error: "MID is required" }, { status: 400 });
@@ -38,16 +43,32 @@ export async function POST(
     return NextResponse.json({ error: "Failed to update MID" }, { status: 500 });
   }
 
-  // Store credentials only if all three are present.
-  if (clientId && clientSecret && partnerToken) {
-    try {
-      await setMerchantDppCredentials(mid, { clientId, clientSecret, partnerToken });
-    } catch (err) {
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Failed to store credentials" },
-        { status: 500 }
-      );
+  // Store credentials when the core three are present (optionally with the
+  // embedded Signature Key), or patch just the Signature Key onto existing creds
+  // so the operator doesn't have to re-enter the other secrets.
+  try {
+    if (clientId && clientSecret && partnerToken) {
+      await setMerchantDppCredentials(mid, {
+        clientId,
+        clientSecret,
+        partnerToken,
+        ...(signatureKey && { signatureKey }),
+      });
+    } else if (signatureKey) {
+      const existing = await getMerchantDppCredentialsOrNull(mid);
+      if (!existing) {
+        return NextResponse.json(
+          { error: "Enter the Deluxe API credentials before adding a Signature Key" },
+          { status: 400 }
+        );
+      }
+      await setMerchantDppCredentials(mid, { ...existing, signatureKey });
     }
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to store credentials" },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ success: true });
