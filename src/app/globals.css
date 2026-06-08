@@ -45,3 +45,15 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--qb-slate);
 }
+
+/* Neutralize the browser autofill tint (the blue/yellow background) so
+   credential-entry fields keep their normal white background. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: #111;
+  caret-color: #111;
+  transition: background-color 9999s ease-in-out 0s;
+}
