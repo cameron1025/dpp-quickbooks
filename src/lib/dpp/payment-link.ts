@@ -67,9 +67,13 @@ export async function createInvoicePaymentLink(
     amount: { amount: params.amount, currency: params.currency || "USD" },
     ...(firstName && { firstName }),
     ...(lastName && { lastName }),
-    // Auto-generate the orderId so regenerating a link for the same invoice
-    // (e.g. on each reminder) never collides on a unique-orderId constraint.
-    orderData: { autoGenerateOrderId: true },
+    // Deluxe REQUIRES orderData.orderId — there is no auto-generate option
+    // (confirmed against the DPP Payment Link spec). Suffix the invoice number
+    // with a timestamp so regenerating a link for the same invoice (e.g. on each
+    // reminder) never collides on Deluxe's unique-orderId constraint. The
+    // invoice number remains the reconciliation match key, carried separately in
+    // customData below.
+    orderData: { orderId: `${params.invoiceNumber}-${Date.now().toString(36)}` },
     customData: [{ name: "Invoice Number", value: params.invoiceNumber }],
     paymentLinkExpiry: process.env.DPP_PAYMENT_LINK_EXPIRY || "9 DAYS",
     acceptPaymentMethod: acceptedMethods(),
