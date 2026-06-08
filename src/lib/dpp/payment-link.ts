@@ -31,6 +31,22 @@ function acceptedMethods(): string[] {
     .filter(Boolean);
 }
 
+// Deluxe REQUIRES deliveryMethod and the only supported channel is email, which
+// makes Deluxe send the pay link to that address. We do NOT want the customer to
+// receive Deluxe's off-brand email — PaySync sends its own branded email (or the
+// link rides QB's invoice in qb_native mode) — so we deliver to an
+// operator-controlled sink inbox instead. Set DPP_LINK_DELIVERY_EMAIL to a
+// dedicated address; falls back to ALERT_EMAIL_FROM (already operator-owned).
+function deliverySinkEmail(): string {
+  const sink = process.env.DPP_LINK_DELIVERY_EMAIL || process.env.ALERT_EMAIL_FROM;
+  if (!sink) {
+    throw new Error(
+      "Deluxe requires deliveryMethod.email — set DPP_LINK_DELIVERY_EMAIL (or ALERT_EMAIL_FROM) to an operator-controlled inbox so the pay link is not delivered to customers."
+    );
+  }
+  return sink;
+}
+
 function splitName(full?: string): { firstName?: string; lastName?: string } {
   if (!full?.trim()) return {};
   const parts = full.trim().split(/\s+/);
@@ -82,8 +98,10 @@ export async function createInvoicePaymentLink(
     acceptPhone: false,
     requiredPhone: false,
     confirmationMessage: "Thank you for your payment!",
-    // Note: deliveryMethod is intentionally omitted so Deluxe does NOT email
-    // the link — PaySync sends the email.
+    // Required by Deluxe. Delivered to an operator-controlled sink (see
+    // deliverySinkEmail) so the customer never receives Deluxe's email — PaySync
+    // owns the customer-facing email / the link rides QB's invoice.
+    deliveryMethod: { email: deliverySinkEmail() },
   };
 
   const res = await fetch(`${apiBase()}/dpp/v1/paymentlinks`, {
